@@ -748,57 +748,673 @@ Y2030 = A2030 * K2030**alpha * L2030**beta * D2030**gamma * AI2030**delta * H203
 
 def page_2():
     hero(
-        "Bài 2 — LP phân bổ ngân sách số",
-        "Tối đa hóa GDP kỳ vọng từ bốn hạng mục đầu tư: hạ tầng số, AI và dữ liệu, nhân lực số, R&D công nghệ.",
-        ["Linear Programming", "scipy.optimize", "Sensitivity"],
+        "Bài 2 — Phân bổ ngân sách đơn giản theo 4 hạng mục đầu tư số",
+        "Trình bày đầy đủ các mục 2.1-2.5: bối cảnh, mô hình LP, diễn giải hệ số, bốn yêu cầu lập trình và thảo luận chính sách.",
+        ["2.1-2.5", "Linear Programming", "SciPy", "PuLP", "Shadow price"],
     )
 
-    c1, c2 = st.columns(2)
-    B = c1.slider("Ngân sách tổng B (nghìn tỷ VND)", 80, 160, 100, 10)
-    min_human = c2.slider("Sàn nhân lực số x₃", 20, 50, 20, 5)
-
-    c = [-0.85, -1.20, -0.95, -1.35]
-    A_ub = [
-        [1, 1, 1, 1],
-        [-1, 0, 0, 0],
-        [0, -1, 0, 0],
-        [0, 0, -1, 0],
-        [0, 0, 0, -1],
-        [0.35, -0.65, 0.35, -0.65],
+    # =====================================================
+    # Hàm giải dùng chung
+    # =====================================================
+    item_names = [
+        "x₁ - Hạ tầng số",
+        "x₂ - AI và dữ liệu",
+        "x₃ - Nhân lực số",
+        "x₄ - R&D công nghệ",
     ]
-    b_ub = [B, -25, -15, -min_human, -10, 0]
-    res = linprog(c, A_ub=A_ub, b_ub=b_ub, bounds=[(0, None)] * 4, method="highs")
+    impact = np.array([0.85, 1.20, 0.95, 1.35], dtype=float)
 
-    if not res.success:
-        st.error("Bài toán không khả thi với tham số hiện tại. Giảm sàn nhân lực hoặc tăng ngân sách.")
+    def solve_with_scipy(budget=100.0, min_human=20.0):
+        # Tối đa hóa Z tương đương tối thiểu hóa -Z
+        c = -impact
+        A_ub = np.array(
+            [
+                [1.00, 1.00, 1.00, 1.00],      # tổng ngân sách
+                [-1.00, 0.00, 0.00, 0.00],     # x1 >= 25
+                [0.00, -1.00, 0.00, 0.00],     # x2 >= 15
+                [0.00, 0.00, -1.00, 0.00],     # x3 >= min_human
+                [0.00, 0.00, 0.00, -1.00],     # x4 >= 10
+                [0.35, -0.65, 0.35, -0.65],    # x2+x4 >= 35% tổng
+            ],
+            dtype=float,
+        )
+        b_ub = np.array(
+            [budget, -25.0, -15.0, -float(min_human), -10.0, 0.0],
+            dtype=float,
+        )
+        return linprog(
+            c,
+            A_ub=A_ub,
+            b_ub=b_ub,
+            bounds=[(0, None)] * 4,
+            method="highs",
+        )
+
+    def build_allocation_table(x):
+        out = pd.DataFrame(
+            {
+                "Hạng mục": item_names,
+                "Phân bổ tối ưu (nghìn tỷ VND)": x,
+                "Hệ số tác động": impact,
+            }
+        )
+        out["GDP kỳ vọng tăng thêm"] = (
+            out["Phân bổ tối ưu (nghìn tỷ VND)"] * out["Hệ số tác động"]
+        )
+        return out
+
+    # Nghiệm chuẩn của đề bài
+    base_res = solve_with_scipy(budget=100.0, min_human=20.0)
+    if not base_res.success:
+        st.error("Bài toán chuẩn B=100 không khả thi. Hãy kiểm tra lại các ràng buộc.")
         return
 
-    names = ["Hạ tầng số I", "AI và dữ liệu", "Nhân lực số H", "R&D công nghệ"]
-    out = pd.DataFrame({"Hạng mục": names, "Phân bổ tối ưu": res.x, "Hệ số GDP": [0.85, 1.20, 0.95, 1.35]})
-    out["GDP gain"] = out["Phân bổ tối ưu"] * out["Hệ số GDP"]
-    Z = -res.fun
+    base_x = base_res.x
+    base_z = -base_res.fun
+    base_table = build_allocation_table(base_x)
+    strategic_share = 100 * (base_x[1] + base_x[3]) / max(base_x.sum(), 1e-12)
 
-    kpi_cards(
+    # =====================================================
+    # 2.1. Bối cảnh Việt Nam
+    # =====================================================
+    st.markdown("## 2.1. Bối cảnh Việt Nam")
+    st.markdown(
+        """
+        Theo Chương trình Chuyển đổi số quốc gia, Việt Nam đặt mục tiêu nâng tỷ trọng
+        kinh tế số và thúc đẩy đồng thời hạ tầng số, dữ liệu, trí tuệ nhân tạo, nhân lực
+        số và nghiên cứu phát triển. Giả sử Chính phủ có **100 nghìn tỷ VND** để phân bổ
+        cho bốn hạng mục:
+
+        - **x₁:** hạ tầng số;
+        - **x₂:** AI và dữ liệu;
+        - **x₃:** nhân lực số;
+        - **x₄:** R&D công nghệ.
+
+        Bài toán cần xác định cơ cấu phân bổ làm **tăng GDP kỳ vọng lớn nhất**, nhưng vẫn
+        bảo đảm mức đầu tư tối thiểu và tỷ trọng tối thiểu dành cho công nghệ chiến lược.
+        """
+    )
+
+    context_df = pd.DataFrame(
+        {
+            "Hạng mục": item_names,
+            "Mức tối thiểu": [25, 15, 20, 10],
+            "Hệ số GDP kỳ vọng": impact,
+            "Ý nghĩa": [
+                "Nền tảng kết nối, trung tâm dữ liệu và hạ tầng số",
+                "AI, dữ liệu lớn và năng lực xử lý số",
+                "Đào tạo kỹ năng số và kỹ sư AI",
+                "Nghiên cứu, đổi mới sáng tạo và công nghệ lõi",
+            ],
+        }
+    )
+    st.dataframe(context_df, use_container_width=True, hide_index=True)
+
+    # =====================================================
+    # 2.2. Mô hình toán học
+    # =====================================================
+    st.markdown("## 2.2. Mô hình toán học")
+    st.markdown("### Biến quyết định")
+    st.latex(
+        r"x_1=\text{đầu tư hạ tầng số},\quad "
+        r"x_2=\text{đầu tư AI và dữ liệu},\quad "
+        r"x_3=\text{đầu tư nhân lực số},\quad "
+        r"x_4=\text{đầu tư R\&D}"
+    )
+
+    st.markdown("### Hàm mục tiêu")
+    st.latex(r"\max Z=0.85x_1+1.20x_2+0.95x_3+1.35x_4")
+
+    st.markdown("### Các ràng buộc")
+    st.latex(r"x_1+x_2+x_3+x_4\leq 100")
+    st.latex(r"x_1\geq 25,\quad x_2\geq 15,\quad x_3\geq 20,\quad x_4\geq 10")
+    st.latex(
+        r"x_2+x_4\geq 0.35(x_1+x_2+x_3+x_4)"
+    )
+    st.latex(r"x_1,x_2,x_3,x_4\geq 0")
+
+    st.info(
+        "Ràng buộc công nghệ chiến lược có thể chuyển về dạng chuẩn của linprog: "
+        "0,35x₁ - 0,65x₂ + 0,35x₃ - 0,65x₄ ≤ 0."
+    )
+
+    # =====================================================
+    # 2.3. Diễn giải hệ số mục tiêu
+    # =====================================================
+    st.markdown("## 2.3. Diễn giải hệ số mục tiêu")
+    coefficient_df = pd.DataFrame(
+        {
+            "Biến": ["x₁", "x₂", "x₃", "x₄"],
+            "Hạng mục": [
+                "Hạ tầng số",
+                "AI và dữ liệu",
+                "Nhân lực số",
+                "R&D công nghệ",
+            ],
+            "Hệ số": impact,
+            "Diễn giải": [
+                "Một đơn vị đầu tư tạo 0,85 đơn vị GDP kỳ vọng",
+                "Một đơn vị đầu tư tạo 1,20 đơn vị GDP kỳ vọng",
+                "Một đơn vị đầu tư tạo 0,95 đơn vị GDP kỳ vọng",
+                "Một đơn vị đầu tư tạo 1,35 đơn vị GDP kỳ vọng",
+            ],
+        }
+    )
+    st.dataframe(coefficient_df, use_container_width=True, hide_index=True)
+    st.markdown(
+        """
+        Trong mô hình giả định, **R&D có hệ số cao nhất (1,35)**, tiếp theo là
+        **AI và dữ liệu (1,20)**, **nhân lực số (0,95)** và **hạ tầng số (0,85)**.
+        Đây là hệ số tác động kỳ vọng dùng cho bài tập, không phải ước lượng nhân quả
+        đã được kiểm định từ dữ liệu vi mô.
+        """
+    )
+
+    # =====================================================
+    # 2.4. Yêu cầu lập trình
+    # =====================================================
+    st.markdown("## 2.4. Yêu cầu lập trình")
+    tab241, tab242, tab243, tab244 = st.tabs(
         [
-            ("Z* tối ưu", f"{Z:,.2f}", "nghìn tỷ VND GDP gain"),
-            ("AI + R&D", f"{out.loc[out['Hạng mục'].isin(['AI và dữ liệu','R&D công nghệ']), 'Phân bổ tối ưu'].sum() / out['Phân bổ tối ưu'].sum() * 100:.1f}%", "tỷ trọng công nghệ chiến lược"),
-            ("Ngân sách sử dụng", f"{out['Phân bổ tối ưu'].sum():,.1f}", "nghìn tỷ VND"),
-            ("Hạng mục lớn nhất", out.sort_values("Phân bổ tối ưu", ascending=False).iloc[0]["Hạng mục"], "allocation"),
+            "2.4.1 - SciPy",
+            "2.4.2 - PuLP & dual",
+            "2.4.3 - Độ nhạy ngân sách",
+            "2.4.4 - Ưu tiên nhân lực",
         ]
     )
-    c1, c2 = st.columns([1, 1])
-    with c1:
-        st.dataframe(out, use_container_width=True, hide_index=True)
-    with c2:
-        st.plotly_chart(plot_bar(out, "Hạng mục", "Phân bổ tối ưu", "Phân bổ tối ưu theo hạng mục", text="Phân bổ tối ưu"), use_container_width=True)
 
-    sens_rows = []
-    for b in [100, 120, 140, B]:
-        r = linprog(c, A_ub=A_ub, b_ub=[b, -25, -15, -min_human, -10, 0], bounds=[(0, None)] * 4, method="highs")
-        if r.success:
-            sens_rows.append([b, -r.fun])
-    sens = pd.DataFrame(sens_rows, columns=["B", "Z*"])
-    st.plotly_chart(plot_line(sens.sort_values("B"), "B", "Z*", "Độ nhạy ngân sách tổng: Z*(B)"), use_container_width=True)
+    with tab241:
+        st.markdown("### Câu 2.4.1. Giải bằng scipy.optimize.linprog")
+        kpi_cards(
+            [
+                ("Giá trị tối ưu Z*", f"{base_z:,.2f}", "nghìn tỷ VND GDP kỳ vọng"),
+                ("Ngân sách sử dụng", f"{base_x.sum():,.2f}", "trên tổng 100"),
+                ("AI + R&D", f"{strategic_share:.1f}%", "yêu cầu tối thiểu 35%"),
+                (
+                    "Hạng mục nhận nhiều nhất",
+                    base_table.sort_values(
+                        "Phân bổ tối ưu (nghìn tỷ VND)", ascending=False
+                    ).iloc[0]["Hạng mục"],
+                    "theo nghiệm tối ưu",
+                ),
+            ]
+        )
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            st.dataframe(
+                base_table.style.format(
+                    {
+                        "Phân bổ tối ưu (nghìn tỷ VND)": "{:.2f}",
+                        "Hệ số tác động": "{:.2f}",
+                        "GDP kỳ vọng tăng thêm": "{:.2f}",
+                    }
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+        with c2:
+            st.plotly_chart(
+                plot_bar(
+                    base_table,
+                    "Hạng mục",
+                    "Phân bổ tối ưu (nghìn tỷ VND)",
+                    "Phân bổ tối ưu theo SciPy",
+                    text="Phân bổ tối ưu (nghìn tỷ VND)",
+                ),
+                use_container_width=True,
+            )
+
+        residual_df = pd.DataFrame(
+            {
+                "Ràng buộc": [
+                    "Ngân sách tổng",
+                    "x₁ tối thiểu",
+                    "x₂ tối thiểu",
+                    "x₃ tối thiểu",
+                    "x₄ tối thiểu",
+                    "Tỷ trọng AI + R&D",
+                ],
+                "Slack theo SciPy": base_res.ineqlin.residual,
+                "Đang chặt?": np.isclose(
+                    base_res.ineqlin.residual, 0.0, atol=1e-7
+                ),
+            }
+        )
+        st.dataframe(residual_df, use_container_width=True, hide_index=True)
+
+        with st.expander("Xem mã Python cho câu 2.4.1"):
+            st.code(
+                """from scipy.optimize import linprog
+
+c = [-0.85, -1.20, -0.95, -1.35]
+A_ub = [
+    [1, 1, 1, 1],
+    [-1, 0, 0, 0],
+    [0, -1, 0, 0],
+    [0, 0, -1, 0],
+    [0, 0, 0, -1],
+    [0.35, -0.65, 0.35, -0.65],
+]
+b_ub = [100, -25, -15, -20, -10, 0]
+
+res = linprog(
+    c,
+    A_ub=A_ub,
+    b_ub=b_ub,
+    bounds=[(0, None)] * 4,
+    method="highs",
+)
+Z_star = -res.fun
+x_star = res.x""",
+                language="python",
+            )
+
+    with tab242:
+        st.markdown("### Câu 2.4.2. Giải lại bằng PuLP và đọc giá đối ngẫu")
+        try:
+            import pulp
+
+            model = pulp.LpProblem("VN_Digital_Budget", pulp.LpMaximize)
+            x1 = pulp.LpVariable("x1_Infrastructure", lowBound=0)
+            x2 = pulp.LpVariable("x2_AI_Data", lowBound=0)
+            x3 = pulp.LpVariable("x3_Digital_Human", lowBound=0)
+            x4 = pulp.LpVariable("x4_RD", lowBound=0)
+
+            model += (
+                0.85 * x1 + 1.20 * x2 + 0.95 * x3 + 1.35 * x4,
+                "Expected_GDP_Gain",
+            )
+            model += x1 + x2 + x3 + x4 <= 100, "C1_Total_Budget"
+            model += x1 >= 25, "C2_Min_Infrastructure"
+            model += x2 >= 15, "C3_Min_AI_Data"
+            model += x3 >= 20, "C4_Min_Digital_Human"
+            model += x4 >= 10, "C5_Min_RD"
+            model += (
+                x2 + x4 >= 0.35 * (x1 + x2 + x3 + x4),
+                "C6_Strategic_Technology",
+            )
+
+            solver = pulp.PULP_CBC_CMD(msg=False)
+            model.solve(solver)
+
+            pulp_status = pulp.LpStatus[model.status]
+            pulp_x = np.array(
+                [x1.value(), x2.value(), x3.value(), x4.value()],
+                dtype=float,
+            )
+            pulp_z = float(pulp.value(model.objective))
+
+            pulp_table = build_allocation_table(pulp_x)
+            compare_df = pd.DataFrame(
+                {
+                    "Hạng mục": item_names,
+                    "SciPy": base_x,
+                    "PuLP": pulp_x,
+                    "Chênh lệch tuyệt đối": np.abs(base_x - pulp_x),
+                }
+            )
+
+            dual_rows = []
+            for name, constraint in model.constraints.items():
+                dual_rows.append(
+                    {
+                        "Ràng buộc": name,
+                        "Giá đối ngẫu (pi)": getattr(constraint, "pi", np.nan),
+                        "Slack": getattr(constraint, "slack", np.nan),
+                    }
+                )
+            dual_df = pd.DataFrame(dual_rows)
+
+            budget_dual_series = dual_df.loc[
+                dual_df["Ràng buộc"] == "C1_Total_Budget",
+                "Giá đối ngẫu (pi)",
+            ]
+            budget_dual = (
+                float(budget_dual_series.iloc[0])
+                if len(budget_dual_series)
+                else np.nan
+            )
+
+            kpi_cards(
+                [
+                    ("Trạng thái PuLP", pulp_status, "CBC solver"),
+                    ("Z* PuLP", f"{pulp_z:,.2f}", "so sánh với SciPy"),
+                    (
+                        "Sai lệch nghiệm",
+                        f"{np.max(np.abs(base_x - pulp_x)):.6f}",
+                        "max |SciPy - PuLP|",
+                    ),
+                    (
+                        "Shadow price ngân sách",
+                        f"{budget_dual:.2f}"
+                        if np.isfinite(budget_dual)
+                        else "Không đọc được",
+                        "GDP kỳ vọng / 1 đơn vị ngân sách",
+                    ),
+                ]
+            )
+
+            st.markdown("#### So sánh nghiệm SciPy và PuLP")
+            st.dataframe(
+                compare_df.style.format(
+                    {
+                        "SciPy": "{:.4f}",
+                        "PuLP": "{:.4f}",
+                        "Chênh lệch tuyệt đối": "{:.6f}",
+                    }
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            st.markdown("#### Giá đối ngẫu và slack")
+            st.dataframe(
+                dual_df.style.format(
+                    {
+                        "Giá đối ngẫu (pi)": "{:.4f}",
+                        "Slack": "{:.4f}",
+                    }
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            if np.isfinite(budget_dual):
+                st.info(
+                    f"Giá đối ngẫu của ràng buộc ngân sách tổng là khoảng "
+                    f"**{budget_dual:.2f}**. Trong vùng độ nhạy hiện tại, tăng thêm "
+                    f"1 nghìn tỷ VND ngân sách làm Z* tăng xấp xỉ "
+                    f"**{budget_dual:.2f} nghìn tỷ VND**."
+                )
+            else:
+                st.warning(
+                    "CBC trong môi trường hiện tại không trả về thuộc tính dual. "
+                    "Bạn vẫn có thể dùng marginal của HiGHS ở bảng SciPy hoặc cài CBC đầy đủ."
+                )
+
+            with st.expander("Xem mã Python cho câu 2.4.2"):
+                st.code(
+                    """import pulp
+
+m = pulp.LpProblem("VN_Digital_Budget", pulp.LpMaximize)
+x1 = pulp.LpVariable("x1", lowBound=0)
+x2 = pulp.LpVariable("x2", lowBound=0)
+x3 = pulp.LpVariable("x3", lowBound=0)
+x4 = pulp.LpVariable("x4", lowBound=0)
+
+m += 0.85*x1 + 1.20*x2 + 0.95*x3 + 1.35*x4
+m += x1 + x2 + x3 + x4 <= 100, "Total_Budget"
+m += x1 >= 25, "Min_I"
+m += x2 >= 15, "Min_AI"
+m += x3 >= 20, "Min_H"
+m += x4 >= 10, "Min_RD"
+m += x2 + x4 >= 0.35*(x1+x2+x3+x4), "Strategic"
+
+m.solve(pulp.PULP_CBC_CMD(msg=False))
+
+for name, constraint in m.constraints.items():
+    print(name, constraint.pi, constraint.slack)""",
+                    language="python",
+                )
+
+        except ModuleNotFoundError:
+            st.error(
+                "Chưa cài thư viện PuLP. Mở requirements.txt, thêm dòng `pulp>=2.7`, "
+                "lưu file, sau đó chạy `pip install -r requirements.txt`."
+            )
+
+    with tab243:
+        st.markdown("### Câu 2.4.3. Phân tích độ nhạy ngân sách B")
+        budget_values = [100.0, 120.0, 140.0]
+        sensitivity_rows = []
+
+        for budget in budget_values:
+            res_b = solve_with_scipy(budget=budget, min_human=20.0)
+            if res_b.success:
+                x_b = res_b.x
+                sensitivity_rows.append(
+                    {
+                        "Ngân sách B": budget,
+                        "Z*": -res_b.fun,
+                        "x₁": x_b[0],
+                        "x₂": x_b[1],
+                        "x₃": x_b[2],
+                        "x₄": x_b[3],
+                        "AI + R&D (%)": 100
+                        * (x_b[1] + x_b[3])
+                        / max(x_b.sum(), 1e-12),
+                    }
+                )
+
+        sensitivity_df = pd.DataFrame(sensitivity_rows)
+        sensitivity_df["ΔZ so với B=100"] = (
+            sensitivity_df["Z*"] - sensitivity_df.loc[0, "Z*"]
+        )
+        sensitivity_df["Z tăng / 20 ngân sách"] = sensitivity_df["Z*"].diff()
+
+        st.dataframe(
+            sensitivity_df.style.format(
+                {
+                    "Ngân sách B": "{:.0f}",
+                    "Z*": "{:.2f}",
+                    "x₁": "{:.2f}",
+                    "x₂": "{:.2f}",
+                    "x₃": "{:.2f}",
+                    "x₄": "{:.2f}",
+                    "AI + R&D (%)": "{:.1f}",
+                    "ΔZ so với B=100": "{:.2f}",
+                    "Z tăng / 20 ngân sách": "{:.2f}",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.plotly_chart(
+            plot_line(
+                sensitivity_df,
+                "Ngân sách B",
+                "Z*",
+                "Đường cong độ nhạy Z*(B)",
+            ),
+            use_container_width=True,
+        )
+
+        allocation_long = sensitivity_df.melt(
+            id_vars=["Ngân sách B"],
+            value_vars=["x₁", "x₂", "x₃", "x₄"],
+            var_name="Biến",
+            value_name="Phân bổ",
+        )
+        fig_alloc = px.bar(
+            allocation_long,
+            x="Ngân sách B",
+            y="Phân bổ",
+            color="Biến",
+            barmode="stack",
+            template=PLOT_TEMPLATE,
+            title="Cơ cấu phân bổ khi ngân sách tăng",
+        )
+        fig_alloc.update_layout(height=430, margin=dict(l=10, r=10, t=54, b=10))
+        st.plotly_chart(fig_alloc, use_container_width=True)
+
+        marginal_growth = (
+            sensitivity_df.loc[1, "Z*"] - sensitivity_df.loc[0, "Z*"]
+        ) / (
+            sensitivity_df.loc[1, "Ngân sách B"]
+            - sensitivity_df.loc[0, "Ngân sách B"]
+        )
+        st.info(
+            f"Trong khoảng B=100-140, Z* tăng gần tuyến tính. Mỗi 1 nghìn tỷ VND "
+            f"ngân sách tăng thêm làm Z* tăng khoảng **{marginal_growth:.2f}** "
+            "nghìn tỷ VND theo hệ số mô hình."
+        )
+
+        with st.expander("Xem mã Python cho câu 2.4.3"):
+            st.code(
+                """rows = []
+for B in [100, 120, 140]:
+    res = solve_with_scipy(budget=B, min_human=20)
+    rows.append({
+        "B": B,
+        "Z_star": -res.fun,
+        "x1": res.x[0],
+        "x2": res.x[1],
+        "x3": res.x[2],
+        "x4": res.x[3],
+    })
+sensitivity_df = pd.DataFrame(rows)""",
+                language="python",
+            )
+
+    with tab244:
+        st.markdown("### Câu 2.4.4. Tăng sàn nhân lực số lên x₃ ≥ 30")
+        human_res = solve_with_scipy(budget=100.0, min_human=30.0)
+
+        if not human_res.success:
+            st.error(
+                "Bài toán không khả thi khi x₃ ≥ 30 với ngân sách B=100."
+            )
+        else:
+            human_x = human_res.x
+            human_z = -human_res.fun
+            human_table = build_allocation_table(human_x)
+
+            comparison_human = pd.DataFrame(
+                {
+                    "Hạng mục": item_names,
+                    "Mô hình gốc x₃≥20": base_x,
+                    "Ưu tiên nhân lực x₃≥30": human_x,
+                    "Thay đổi": human_x - base_x,
+                }
+            )
+
+            kpi_cards(
+                [
+                    ("Trạng thái", "Khả thi", "x₃ ≥ 30"),
+                    ("Z* mới", f"{human_z:,.2f}", "nghìn tỷ VND"),
+                    ("Z* thay đổi", f"{human_z - base_z:,.2f}", "so với mô hình gốc"),
+                    (
+                        "Tỷ lệ giảm Z*",
+                        f"{100 * (base_z - human_z) / base_z:.2f}%",
+                        "chi phí ưu tiên nhân lực",
+                    ),
+                ]
+            )
+
+            st.dataframe(
+                comparison_human.style.format(
+                    {
+                        "Mô hình gốc x₃≥20": "{:.2f}",
+                        "Ưu tiên nhân lực x₃≥30": "{:.2f}",
+                        "Thay đổi": "{:+.2f}",
+                    }
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            compare_long = comparison_human.melt(
+                id_vars="Hạng mục",
+                value_vars=[
+                    "Mô hình gốc x₃≥20",
+                    "Ưu tiên nhân lực x₃≥30",
+                ],
+                var_name="Kịch bản",
+                value_name="Phân bổ",
+            )
+            fig_compare = px.bar(
+                compare_long,
+                x="Hạng mục",
+                y="Phân bổ",
+                color="Kịch bản",
+                barmode="group",
+                template=PLOT_TEMPLATE,
+                title="So sánh phân bổ trước và sau khi tăng sàn nhân lực",
+            )
+            fig_compare.update_layout(
+                height=430, margin=dict(l=10, r=10, t=54, b=10)
+            )
+            st.plotly_chart(fig_compare, use_container_width=True)
+
+            st.info(
+                f"Bài toán vẫn khả thi. Khi buộc x₃ tăng thêm 10 đơn vị, một phần "
+                f"ngân sách phải dịch chuyển khỏi hạng mục có lợi ích biên cao hơn. "
+                f"Do đó Z* giảm từ **{base_z:.2f}** xuống **{human_z:.2f}**, "
+                f"tức giảm **{base_z - human_z:.2f}**."
+            )
+
+            with st.expander("Xem mã Python cho câu 2.4.4"):
+                st.code(
+                    """# Thay ràng buộc x3 >= 20 bằng x3 >= 30
+res_priority_H = solve_with_scipy(
+    budget=100,
+    min_human=30,
+)
+print(res_priority_H.success)
+print(-res_priority_H.fun)
+print(res_priority_H.x)""",
+                    language="python",
+                )
+
+    # =====================================================
+    # Tải kết quả
+    # =====================================================
+    export_df = base_table.copy()
+    export_df["Kịch bản"] = "B=100, x3>=20"
+    st.download_button(
+        "Tải kết quả Bài 2 dạng CSV",
+        data=export_df.to_csv(index=False).encode("utf-8-sig"),
+        file_name="bai2_lp_phan_bo_ngan_sach.csv",
+        mime="text/csv",
+        key="download_bai2",
+    )
+
+    # =====================================================
+    # 2.5. Câu hỏi thảo luận chính sách
+    # =====================================================
+    st.markdown("## 2.5. Câu hỏi thảo luận chính sách")
+
+    # Shadow price từ SciPy/HiGHS cho bài toán tối thiểu hóa -Z
+    scipy_budget_shadow = -float(base_res.ineqlin.marginals[0])
+
+    with st.expander(
+        "a) Ngân sách tăng thêm 1 đơn vị thì GDP kỳ vọng tăng bao nhiêu?",
+        expanded=True,
+    ):
+        st.markdown(
+            f"Giá đối ngẫu của ràng buộc ngân sách tổng theo nghiệm HiGHS là khoảng "
+            f"**{scipy_budget_shadow:.2f}**. Nghĩa là, trong phạm vi độ nhạy hiện tại, "
+            f"tăng thêm **1 nghìn tỷ VND** ngân sách có thể làm giá trị mục tiêu tăng "
+            f"xấp xỉ **{scipy_budget_shadow:.2f} nghìn tỷ VND**. Đây là lợi ích biên "
+            "theo mô hình, không nên coi là cận trên chắc chắn của chi phí cơ hội vốn công "
+            "vì mô hình chưa phản ánh thuế, nợ công, độ trễ, rủi ro triển khai và hiệu ứng lấn át."
+        )
+
+    with st.expander(
+        "b) Vì sao R&D có hệ số cao nhất nhưng mức tối thiểu thấp nhất?",
+        expanded=True,
+    ):
+        st.markdown(
+            "R&D có lợi ích lan tỏa dài hạn nhưng thường đi kèm độ trễ lớn, rủi ro thất bại, "
+            "khó hấp thụ nếu thiếu nhân lực và hạ tầng, đồng thời kết quả khó đo lường trong ngắn hạn. "
+            "Vì vậy, mô hình đặt sàn R&D thấp hơn để duy trì tính linh hoạt ngân sách. Tuy nhiên, "
+            "do hệ số mục tiêu của R&D cao nhất, nghiệm tối ưu vẫn có xu hướng phân bổ phần ngân sách "
+            "còn lại vào R&D sau khi đáp ứng các mức tối thiểu."
+        )
+
+    with st.expander(
+        "c) Tỷ lệ 35% cho AI + R&D có khả thi trong thực tiễn không?",
+        expanded=True,
+    ):
+        st.markdown(
+            f"Trong nghiệm chuẩn, AI + R&D chiếm khoảng **{strategic_share:.1f}%** tổng ngân sách, "
+            "cao hơn mức tối thiểu 35%, nên ràng buộc này khả thi về mặt toán học. Trong thực tiễn, "
+            "khả năng thực hiện còn phụ thuộc vào cạnh tranh ngân sách với giao thông, y tế, giáo dục "
+            "và an sinh xã hội; năng lực giải ngân; nguồn nhân lực; chất lượng dự án; cũng như cơ chế "
+            "giám sát hiệu quả đầu tư. Vì vậy cần bổ sung các ràng buộc về trần giải ngân, tiến độ, "
+            "rủi ro và năng lực hấp thụ."
+        )
 
 
 def page_3():
