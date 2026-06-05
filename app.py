@@ -9158,42 +9158,1766 @@ model.solve(
         )
 
 
+_B11_ACTIONS = {
+    0: (
+        "a0 - Truyền thống",
+        np.array(
+            [0.70, 0.10, 0.10, 0.10],
+            dtype=float,
+        ),
+    ),
+    1: (
+        "a1 - Cân bằng",
+        np.array(
+            [0.40, 0.25, 0.15, 0.20],
+            dtype=float,
+        ),
+    ),
+    2: (
+        "a2 - Số hóa nhanh",
+        np.array(
+            [0.25, 0.45, 0.15, 0.15],
+            dtype=float,
+        ),
+    ),
+    3: (
+        "a3 - AI dẫn dắt",
+        np.array(
+            [0.20, 0.20, 0.45, 0.15],
+            dtype=float,
+        ),
+    ),
+    4: (
+        "a4 - Bao trùm",
+        np.array(
+            [0.30, 0.20, 0.10, 0.40],
+            dtype=float,
+        ),
+    ),
+}
+
+
+_B11_STATE_LABELS = {
+    0: "Thấp",
+    1: "Trung bình",
+    2: "Cao",
+}
+
+
+def _b11_action_table():
+    """
+    Bảng năm hành động phân bổ ngân sách.
+    Thứ tự tỷ trọng: K, D, AI, H.
+    """
+    rows = []
+
+    for action_id, (
+        action_name,
+        shares,
+    ) in _B11_ACTIONS.items():
+        rows.append(
+            [
+                action_id,
+                action_name,
+                shares[0],
+                shares[1],
+                shares[2],
+                shares[3],
+            ]
+        )
+
+    return pd.DataFrame(
+        rows,
+        columns=[
+            "Mã",
+            "Hành động",
+            "K",
+            "D",
+            "AI",
+            "H",
+        ],
+    )
+
+
+def _b11_transition(
+    state,
+    action,
+    rng,
+):
+    """
+    Hàm chuyển trạng thái mô phỏng nền kinh tế.
+
+    State:
+    - g: tăng trưởng GDP, 0-2
+    - d: mức độ số hóa, 0-2
+    - ai: năng lực AI, 0-2
+    - u: rủi ro thất nghiệp, 0-2
+
+    Action:
+    - 0 đến 4, tương ứng năm cơ cấu ngân sách.
+    """
+    g, d, ai, u = np.asarray(
+        state,
+        dtype=int,
+    )
+
+    shares = _B11_ACTIONS[
+        int(action)
+    ][1]
+
+    share_k = float(
+        shares[0]
+    )
+    share_d = float(
+        shares[1]
+    )
+    share_ai = float(
+        shares[2]
+    )
+    share_h = float(
+        shares[3]
+    )
+
+    # Tăng trưởng kỳ vọng từ cơ cấu đầu tư và trạng thái hiện tại
+    growth_effect = (
+        0.18 * share_k
+        + 0.34 * share_d
+        + 0.50 * share_ai
+        + 0.28 * share_h
+        + 0.025 * g
+        + 0.020 * d
+        + 0.018 * ai
+        + rng.normal(
+            0.0,
+            0.018,
+        )
+    )
+
+    # Dương nghĩa là rủi ro thất nghiệp tăng
+    unemployment_effect = (
+        0.46 * share_ai
+        - 0.62 * share_h
+        - 0.12 * share_d
+        + 0.025 * ai
+        - 0.015 * d
+        + rng.normal(
+            0.0,
+            0.015,
+        )
+    )
+
+    cyber_risk = max(
+        0.0,
+        0.52 * share_ai
+        + 0.22 * share_d
+        - 0.28 * share_h
+        + 0.025 * ai,
+    )
+
+    emission_risk = max(
+        0.0,
+        0.38 * share_k
+        + 0.30 * share_ai
+        - 0.10 * share_d
+        - 0.06 * share_h,
+    )
+
+    inclusion_gain = (
+        0.55 * share_h
+        + 0.20 * share_d
+        - 0.18 * share_ai
+    )
+
+    reward = (
+        0.42 * growth_effect
+        - 0.24 * max(
+            unemployment_effect,
+            0.0,
+        )
+        - 0.17 * cyber_risk
+        - 0.12 * emission_risk
+        + 0.05 * inclusion_gain
+    )
+
+    next_g = int(
+        np.clip(
+            g
+            + int(
+                growth_effect > 0.31
+            )
+            - int(
+                growth_effect < 0.19
+            ),
+            0,
+            2,
+        )
+    )
+
+    next_d = int(
+        np.clip(
+            d
+            + int(
+                share_d >= 0.30
+            )
+            - int(
+                share_d <= 0.10
+            ),
+            0,
+            2,
+        )
+    )
+
+    next_ai = int(
+        np.clip(
+            ai
+            + int(
+                share_ai >= 0.30
+            )
+            - int(
+                share_ai <= 0.10
+            ),
+            0,
+            2,
+        )
+    )
+
+    next_u = int(
+        np.clip(
+            u
+            + int(
+                unemployment_effect > 0.08
+            )
+            - int(
+                unemployment_effect < -0.05
+            ),
+            0,
+            2,
+        )
+    )
+
+    next_state = np.array(
+        [
+            next_g,
+            next_d,
+            next_ai,
+            next_u,
+        ],
+        dtype=int,
+    )
+
+    components = {
+        "growth_effect": float(
+            growth_effect
+        ),
+        "unemployment_effect": float(
+            unemployment_effect
+        ),
+        "cyber_risk": float(
+            cyber_risk
+        ),
+        "emission_risk": float(
+            emission_risk
+        ),
+        "inclusion_gain": float(
+            inclusion_gain
+        ),
+    }
+
+    return (
+        next_state,
+        float(
+            reward
+        ),
+        components,
+    )
+
+
+class _B11SimpleEnv:
+    """
+    Môi trường MDP tối giản, không bắt buộc cài Gymnasium.
+    """
+
+    def __init__(
+        self,
+        horizon=10,
+        seed=42,
+    ):
+        self.horizon = int(
+            horizon
+        )
+
+        self.rng = np.random.default_rng(
+            seed
+        )
+
+        self.state = None
+        self.t = 0
+
+    def reset(
+        self,
+        initial_state=None,
+    ):
+        if initial_state is None:
+            initial_state = np.array(
+                [1, 1, 0, 1],
+                dtype=int,
+            )
+
+        self.state = np.asarray(
+            initial_state,
+            dtype=int,
+        ).copy()
+
+        self.t = 0
+
+        return self.state.copy()
+
+    def step(
+        self,
+        action,
+    ):
+        (
+            next_state,
+            reward,
+            components,
+        ) = _b11_transition(
+            self.state,
+            action,
+            self.rng,
+        )
+
+        self.state = next_state
+        self.t += 1
+
+        done = (
+            self.t >= self.horizon
+        )
+
+        return (
+            next_state.copy(),
+            reward,
+            done,
+            components,
+        )
+
+
+@st.cache_data
+def _b11_train_q_learning(
+    episodes=10000,
+    learning_rate=0.10,
+    discount_factor=0.95,
+    seed=42,
+):
+    """
+    Huấn luyện Q-learning tabular.
+
+    Q có kích thước:
+        3 × 3 × 3 × 3 × 5
+    tương ứng 81 trạng thái và 5 hành động.
+    """
+    rng = np.random.default_rng(
+        seed
+    )
+
+    q_table = np.zeros(
+        (
+            3,
+            3,
+            3,
+            3,
+            5,
+        ),
+        dtype=float,
+    )
+
+    reward_history = []
+    epsilon_history = []
+
+    for episode in range(
+        int(
+            episodes
+        )
+    ):
+        state = np.array(
+            [1, 1, 0, 1],
+            dtype=int,
+        )
+
+        total_reward = 0.0
+
+        epsilon = max(
+            0.05,
+            1.0
+            - episode
+            / max(
+                episodes * 0.65,
+                1,
+            ),
+        )
+
+        for _ in range(
+            10
+        ):
+            state_key = tuple(
+                state
+            )
+
+            if rng.random() < epsilon:
+                action = int(
+                    rng.integers(
+                        0,
+                        5,
+                    )
+                )
+            else:
+                action = int(
+                    np.argmax(
+                        q_table[
+                            state_key
+                        ]
+                    )
+                )
+
+            (
+                next_state,
+                reward,
+                _,
+            ) = _b11_transition(
+                state,
+                action,
+                rng,
+            )
+
+            next_state_key = tuple(
+                next_state
+            )
+
+            old_value = q_table[
+                state_key
+                + (
+                    action,
+                )
+            ]
+
+            target = (
+                reward
+                + discount_factor
+                * np.max(
+                    q_table[
+                        next_state_key
+                    ]
+                )
+            )
+
+            q_table[
+                state_key
+                + (
+                    action,
+                )
+            ] = (
+                old_value
+                + learning_rate
+                * (
+                    target
+                    - old_value
+                )
+            )
+
+            state = next_state
+            total_reward += reward
+
+        reward_history.append(
+            total_reward
+        )
+
+        epsilon_history.append(
+            epsilon
+        )
+
+    learning_curve = pd.DataFrame(
+        {
+            "Episode": np.arange(
+                1,
+                episodes + 1,
+            ),
+            "Reward": reward_history,
+            "Epsilon": epsilon_history,
+        }
+    )
+
+    rolling_window = min(
+        200,
+        max(
+            20,
+            episodes // 20,
+        ),
+    )
+
+    learning_curve[
+        "Reward_MA"
+    ] = (
+        learning_curve[
+            "Reward"
+        ]
+        .rolling(
+            rolling_window,
+            min_periods=1,
+        )
+        .mean()
+    )
+
+    return (
+        q_table,
+        learning_curve,
+    )
+
+
+def _b11_evaluate_policy(
+    q_table=None,
+    fixed_action=None,
+    random_policy=False,
+    episodes=500,
+    seed=7,
+):
+    """
+    Đánh giá chính sách trên các mô phỏng ngoài mẫu.
+    """
+    rng = np.random.default_rng(
+        seed
+    )
+
+    total_rewards = []
+    ending_states = []
+
+    for _ in range(
+        int(
+            episodes
+        )
+    ):
+        state = np.array(
+            [1, 1, 0, 1],
+            dtype=int,
+        )
+
+        episode_reward = 0.0
+
+        for _ in range(
+            10
+        ):
+            if random_policy:
+                action = int(
+                    rng.integers(
+                        0,
+                        5,
+                    )
+                )
+            elif fixed_action is not None:
+                action = int(
+                    fixed_action
+                )
+            else:
+                action = int(
+                    np.argmax(
+                        q_table[
+                            tuple(
+                                state
+                            )
+                        ]
+                    )
+                )
+
+            (
+                state,
+                reward,
+                _,
+            ) = _b11_transition(
+                state,
+                action,
+                rng,
+            )
+
+            episode_reward += reward
+
+        total_rewards.append(
+            episode_reward
+        )
+
+        ending_states.append(
+            state.copy()
+        )
+
+    ending_states = np.asarray(
+        ending_states,
+        dtype=float,
+    )
+
+    return {
+        "mean_reward": float(
+            np.mean(
+                total_rewards
+            )
+        ),
+        "std_reward": float(
+            np.std(
+                total_rewards
+            )
+        ),
+        "mean_final_g": float(
+            ending_states[:, 0].mean()
+        ),
+        "mean_final_d": float(
+            ending_states[:, 1].mean()
+        ),
+        "mean_final_ai": float(
+            ending_states[:, 2].mean()
+        ),
+        "mean_final_u": float(
+            ending_states[:, 3].mean()
+        ),
+    }
+
+
+def _b11_representative_policy(
+    q_table,
+):
+    """
+    Trích xuất chính sách tại một số trạng thái đại diện.
+    """
+    representative_states = {
+        "Việt Nam 2026": (
+            1,
+            1,
+            0,
+            1,
+        ),
+        "GDP thấp, số hóa thấp, thất nghiệp cao": (
+            0,
+            0,
+            0,
+            2,
+        ),
+        "GDP cao, AI cao, thất nghiệp thấp": (
+            2,
+            2,
+            2,
+            0,
+        ),
+        "Số hóa cao nhưng AI thấp": (
+            1,
+            2,
+            0,
+            1,
+        ),
+        "Rủi ro thất nghiệp cao": (
+            1,
+            1,
+            1,
+            2,
+        ),
+        "GDP thấp nhưng năng lực AI cao": (
+            0,
+            1,
+            2,
+            1,
+        ),
+    }
+
+    rows = []
+
+    for state_name, state in (
+        representative_states.items()
+    ):
+        q_values = q_table[
+            state
+        ]
+
+        best_action = int(
+            np.argmax(
+                q_values
+            )
+        )
+
+        rows.append(
+            [
+                state_name,
+                str(
+                    state
+                ),
+                _B11_ACTIONS[
+                    best_action
+                ][0],
+                float(
+                    q_values[
+                        best_action
+                    ]
+                ),
+                float(
+                    np.max(
+                        q_values
+                    )
+                    - np.partition(
+                        q_values,
+                        -2,
+                    )[-2]
+                ),
+            ]
+        )
+
+    return pd.DataFrame(
+        rows,
+        columns=[
+            "Trạng thái",
+            "Mã hóa",
+            "Hành động π*",
+            "Q-value",
+            "Khoảng cách Q tốt nhất-thứ hai",
+        ],
+    )
+
+
 def page_11():
     hero(
-        "Bài 11 — Q-learning cho chính sách kinh tế thích nghi",
-        "Mô hình hóa nền kinh tế như MDP rời rạc 81 trạng thái, 5 hành động ngân sách và huấn luyện chính sách π*(s).",
-        ["Reinforcement Learning", "MDP", "Q-learning"],
+        "Bài 11 — Học tăng cường Q-learning cho chính sách kinh tế thích nghi",
+        "Trình bày đầy đủ các mục 11.1-11.4: môi trường MDP, Q-learning 10.000 episodes, chính sách π*, so sánh rule-based và mở rộng DQN.",
+        ["11.1-11.4", "Q-learning", "MDP", "Adaptive policy", "DQN"],
     )
-    episodes = st.slider("Số episode huấn luyện", 1000, 10000, 4000, 1000)
-    Q, rewards = train_q_learning(episodes=episodes)
-    initial_states = {
-        "VN 2026 thực tế": (1, 1, 0, 1),
-        "GDP thấp, D thấp, U cao": (0, 0, 0, 2),
-        "GDP cao, AI cao, U thấp": (2, 2, 2, 0),
-        "Số hóa cao nhưng AI thấp": (1, 2, 0, 1),
-        "Rủi ro thất nghiệp cao": (1, 1, 1, 2),
-    }
-    rows = []
-    for name, state in initial_states.items():
-        action = int(np.argmax(Q[state]))
-        rows.append([name, str(state), ACTION_LABELS[action], Q[state][action]])
-    policy = pd.DataFrame(rows, columns=["Trạng thái", "Mã hóa", "Hành động π*(s)", "Q-value"])
 
-    kpi_cards(
+    # =====================================================
+    # 11.1. Bối cảnh
+    # =====================================================
+    st.markdown(
+        "## 11.1. Bối cảnh"
+    )
+
+    st.markdown(
+        """
+        Các mô hình LP trước đó giả định tham số đã biết và quyết định được đưa ra một lần.
+        Trong thực tế, Chính phủ cần điều chỉnh cơ cấu đầu tư khi tăng trưởng, mức độ số hóa,
+        năng lực AI và rủi ro thất nghiệp thay đổi.
+
+        Bài 11 mô hình hóa nền kinh tế như một **Markov Decision Process (MDP)**.
+        Tác nhân học cách lựa chọn cơ cấu ngân sách theo trạng thái kinh tế để tối đa hóa
+        tổng phần thưởng trong 10 giai đoạn.
+        """
+    )
+
+    # =====================================================
+    # 11.2. Mô hình MDP
+    # =====================================================
+    st.markdown(
+        "## 11.2. Mô hình Markov Decision Process"
+    )
+
+    st.markdown(
+        "### Không gian trạng thái"
+    )
+
+    state_table = pd.DataFrame(
+        {
+            "Thành phần": [
+                "g - Tăng trưởng GDP",
+                "d - Mức độ số hóa",
+                "ai - Năng lực AI",
+                "u - Rủi ro thất nghiệp",
+            ],
+            "Mức 0": [
+                "Thấp",
+                "Thấp",
+                "Thấp",
+                "Thấp",
+            ],
+            "Mức 1": [
+                "Trung bình",
+                "Trung bình",
+                "Trung bình",
+                "Trung bình",
+            ],
+            "Mức 2": [
+                "Cao",
+                "Cao",
+                "Cao",
+                "Cao",
+            ],
+        }
+    )
+
+    st.dataframe(
+        state_table,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.latex(
+        r"s_t="
+        r"(g_t,d_t,ai_t,u_t),"
+        r"\quad"
+        r"g_t,d_t,ai_t,u_t\in\{0,1,2\}"
+    )
+
+    st.markdown(
+        "### Không gian hành động"
+    )
+
+    action_table = (
+        _b11_action_table()
+    )
+
+    st.dataframe(
+        action_table.style.format(
+            {
+                "K": "{:.0%}",
+                "D": "{:.0%}",
+                "AI": "{:.0%}",
+                "H": "{:.0%}",
+            }
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.markdown(
+        "### Hàm phần thưởng"
+    )
+
+    st.latex(
+        r"R_t="
+        r"0.42\Delta GDP_t"
+        r"-0.24\max(\Delta U_t,0)"
+        r"-0.17CyberRisk_t"
+        r"-0.12Emission_t"
+        r"+0.05Inclusion_t"
+    )
+
+    st.markdown(
+        "### Phương trình cập nhật Q-learning"
+    )
+
+    st.latex(
+        r"Q(s_t,a_t)"
+        r"\leftarrow"
+        r"Q(s_t,a_t)"
+        r"+\alpha"
+        r"\left["
+        r"R_t+\gamma\max_aQ(s_{t+1},a)"
+        r"-Q(s_t,a_t)"
+        r"\right]"
+    )
+
+    # Tham số huấn luyện
+    c1, c2, c3 = st.columns(
+        3
+    )
+
+    episodes = c1.select_slider(
+        "Số episode",
+        options=[
+            1000,
+            2000,
+            4000,
+            6000,
+            8000,
+            10000,
+        ],
+        value=10000,
+        key="b11_episodes",
+    )
+
+    learning_rate = c2.slider(
+        "Learning rate α",
+        min_value=0.05,
+        max_value=0.30,
+        value=0.10,
+        step=0.05,
+        key="b11_alpha",
+    )
+
+    discount_factor = c3.slider(
+        "Discount factor γ",
+        min_value=0.80,
+        max_value=0.99,
+        value=0.95,
+        step=0.01,
+        key="b11_gamma",
+    )
+
+    (
+        q_table,
+        learning_curve,
+    ) = _b11_train_q_learning(
+        episodes=episodes,
+        learning_rate=learning_rate,
+        discount_factor=discount_factor,
+        seed=42,
+    )
+
+    # =====================================================
+    # 11.3. Yêu cầu lập trình
+    # =====================================================
+    st.markdown(
+        "## 11.3. Yêu cầu lập trình"
+    )
+
+    (
+        tab1131,
+        tab1132,
+        tab1133,
+        tab1134,
+        tab1135,
+    ) = st.tabs(
         [
-            ("Action cho VN 2026", policy.iloc[0]["Hành động π*(s)"], "policy learned"),
-            ("Reward cuối", f"{rewards['Reward'].tail(200).mean():.3f}", "trung bình 200 episode"),
-            ("Số trạng thái", "81", "3⁴"),
-            ("Số hành động", "5", "a0-a4"),
+            "11.3.1 - Environment",
+            "11.3.2 - Q-learning",
+            "11.3.3 - Chính sách π*",
+            "11.3.4 - So sánh",
+            "11.3.5 - DQN",
         ]
     )
-    c1, c2 = st.columns([1, 1])
-    with c1:
-        st.dataframe(policy, use_container_width=True, hide_index=True)
-    with c2:
-        smooth = rewards.copy()
-        smooth["Reward_MA"] = smooth["Reward"].rolling(100, min_periods=1).mean()
-        st.plotly_chart(plot_line(smooth, "Episode", "Reward_MA", "Learning curve: reward trung bình trượt"), use_container_width=True)
+
+    # -----------------------------------------------------
+    # 11.3.1
+    # -----------------------------------------------------
+    with tab1131:
+        st.markdown(
+            "### Câu 11.3.1. Xây dựng môi trường MDP"
+        )
+
+        demo_env = _B11SimpleEnv(
+            horizon=10,
+            seed=123,
+        )
+
+        initial_state = demo_env.reset(
+            initial_state=np.array(
+                [1, 1, 0, 1],
+                dtype=int,
+            )
+        )
+
+        demo_rows = []
+
+        demo_state = (
+            initial_state.copy()
+        )
+
+        for period in range(
+            1,
+            6,
+        ):
+            demo_action = int(
+                np.argmax(
+                    q_table[
+                        tuple(
+                            demo_state
+                        )
+                    ]
+                )
+            )
+
+            (
+                next_state,
+                reward,
+                done,
+                components,
+            ) = demo_env.step(
+                demo_action
+            )
+
+            demo_rows.append(
+                [
+                    period,
+                    str(
+                        tuple(
+                            demo_state
+                        )
+                    ),
+                    _B11_ACTIONS[
+                        demo_action
+                    ][0],
+                    reward,
+                    components[
+                        "growth_effect"
+                    ],
+                    components[
+                        "unemployment_effect"
+                    ],
+                    components[
+                        "cyber_risk"
+                    ],
+                    components[
+                        "emission_risk"
+                    ],
+                    str(
+                        tuple(
+                            next_state
+                        )
+                    ),
+                ]
+            )
+
+            demo_state = (
+                next_state.copy()
+            )
+
+            if done:
+                break
+
+        demo_table = pd.DataFrame(
+            demo_rows,
+            columns=[
+                "Giai đoạn",
+                "State",
+                "Action",
+                "Reward",
+                "Growth effect",
+                "Unemployment effect",
+                "Cyber risk",
+                "Emission risk",
+                "Next state",
+            ],
+        )
+
+        st.dataframe(
+            demo_table.style.format(
+                {
+                    "Reward": "{:.4f}",
+                    "Growth effect": "{:.4f}",
+                    "Unemployment effect": "{:.4f}",
+                    "Cyber risk": "{:.4f}",
+                    "Emission risk": "{:.4f}",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.info(
+            "Môi trường trong dashboard được viết trực tiếp bằng Python nên không bắt buộc cài Gymnasium."
+        )
+
+        with st.expander(
+            "Xem khung môi trường Gymnasium"
+        ):
+            st.code(
+                """import gymnasium as gym
+from gymnasium import spaces
+
+class VietnamEconomyEnv(gym.Env):
+    def __init__(self):
+        self.action_space = spaces.Discrete(5)
+        self.observation_space = spaces.MultiDiscrete(
+            [3, 3, 3, 3]
+        )
+        self.horizon = 10
+
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
+        self.state = np.array([1, 1, 0, 1])
+        self.t = 0
+        return self.state, {}
+
+    def step(self, action):
+        next_state, reward, info = transition(
+            self.state,
+            action
+        )
+        self.state = next_state
+        self.t += 1
+        terminated = self.t >= self.horizon
+        truncated = False
+        return (
+            self.state,
+            reward,
+            terminated,
+            truncated,
+            info
+        )""",
+                language="python",
+            )
+
+    # -----------------------------------------------------
+    # 11.3.2
+    # -----------------------------------------------------
+    with tab1132:
+        st.markdown(
+            "### Câu 11.3.2. Huấn luyện Q-learning"
+        )
+
+        early_reward = float(
+            learning_curve[
+                "Reward_MA"
+            ]
+            .head(
+                min(
+                    500,
+                    len(
+                        learning_curve
+                    ),
+                )
+            )
+            .mean()
+        )
+
+        final_reward = float(
+            learning_curve[
+                "Reward_MA"
+            ]
+            .tail(
+                min(
+                    500,
+                    len(
+                        learning_curve
+                    ),
+                )
+            )
+            .mean()
+        )
+
+        kpi_cards(
+            [
+                (
+                    "Episodes",
+                    f"{episodes:,}",
+                    "10 bước/episode",
+                ),
+                (
+                    "Learning rate",
+                    f"{learning_rate:.2f}",
+                    "α",
+                ),
+                (
+                    "Discount",
+                    f"{discount_factor:.2f}",
+                    "γ",
+                ),
+                (
+                    "Reward cải thiện",
+                    f"{final_reward-early_reward:+.4f}",
+                    "cuối kỳ so với đầu kỳ",
+                ),
+            ]
+        )
+
+        fig_learning = px.line(
+            learning_curve,
+            x="Episode",
+            y="Reward_MA",
+            template=PLOT_TEMPLATE,
+            title="Learning curve — Reward trung bình trượt",
+        )
+
+        fig_learning.update_layout(
+            height=480,
+            margin=dict(
+                l=10,
+                r=10,
+                t=54,
+                b=10,
+            ),
+        )
+
+        st.plotly_chart(
+            fig_learning,
+            use_container_width=True,
+        )
+
+        epsilon_sample = (
+            learning_curve.iloc[
+                ::max(
+                    episodes // 20,
+                    1,
+                )
+            ][
+                [
+                    "Episode",
+                    "Epsilon",
+                ]
+            ]
+        )
+
+        fig_epsilon = px.line(
+            epsilon_sample,
+            x="Episode",
+            y="Epsilon",
+            markers=True,
+            template=PLOT_TEMPLATE,
+            title="Lịch giảm epsilon",
+        )
+
+        fig_epsilon.update_layout(
+            height=400,
+            margin=dict(
+                l=10,
+                r=10,
+                t=54,
+                b=10,
+            ),
+        )
+
+        st.plotly_chart(
+            fig_epsilon,
+            use_container_width=True,
+        )
+
+        with st.expander(
+            "Xem mã Q-learning rút gọn"
+        ):
+            st.code(
+                """Q = np.zeros((3,3,3,3,5))
+
+for episode in range(10000):
+    state = np.array([1,1,0,1])
+    epsilon = max(
+        0.05,
+        1 - episode/(10000*0.65)
+    )
+
+    for t in range(10):
+        if np.random.rand() < epsilon:
+            action = np.random.randint(5)
+        else:
+            action = np.argmax(Q[tuple(state)])
+
+        next_state, reward = env_step(
+            state,
+            action
+        )
+
+        old = Q[tuple(state)+(action,)]
+        target = reward + 0.95*np.max(
+            Q[tuple(next_state)]
+        )
+
+        Q[tuple(state)+(action,)] = (
+            old + 0.10*(target-old)
+        )
+
+        state = next_state""",
+                language="python",
+            )
+
+    # -----------------------------------------------------
+    # 11.3.3
+    # -----------------------------------------------------
+    with tab1133:
+        st.markdown(
+            "### Câu 11.3.3. Trích xuất chính sách tối ưu π*(s)"
+        )
+
+        policy_table = (
+            _b11_representative_policy(
+                q_table
+            )
+        )
+
+        st.dataframe(
+            policy_table.style.format(
+                {
+                    "Q-value": "{:.4f}",
+                    "Khoảng cách Q tốt nhất-thứ hai": "{:.4f}",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.markdown(
+            "#### Khuyến nghị theo trạng thái do người dùng chọn"
+        )
+
+        s1, s2, s3, s4 = st.columns(
+            4
+        )
+
+        selected_g = s1.selectbox(
+            "GDP growth",
+            options=[
+                0,
+                1,
+                2,
+            ],
+            format_func=lambda x: _B11_STATE_LABELS[
+                x
+            ],
+            index=1,
+            key="b11_state_g",
+        )
+
+        selected_d = s2.selectbox(
+            "Digital index",
+            options=[
+                0,
+                1,
+                2,
+            ],
+            format_func=lambda x: _B11_STATE_LABELS[
+                x
+            ],
+            index=1,
+            key="b11_state_d",
+        )
+
+        selected_ai = s3.selectbox(
+            "AI capacity",
+            options=[
+                0,
+                1,
+                2,
+            ],
+            format_func=lambda x: _B11_STATE_LABELS[
+                x
+            ],
+            index=0,
+            key="b11_state_ai",
+        )
+
+        selected_u = s4.selectbox(
+            "Unemployment risk",
+            options=[
+                0,
+                1,
+                2,
+            ],
+            format_func=lambda x: _B11_STATE_LABELS[
+                x
+            ],
+            index=1,
+            key="b11_state_u",
+        )
+
+        selected_state = (
+            selected_g,
+            selected_d,
+            selected_ai,
+            selected_u,
+        )
+
+        selected_q = q_table[
+            selected_state
+        ]
+
+        recommended_action = int(
+            np.argmax(
+                selected_q
+            )
+        )
+
+        recommended_name = (
+            _B11_ACTIONS[
+                recommended_action
+            ][0]
+        )
+
+        recommended_shares = (
+            _B11_ACTIONS[
+                recommended_action
+            ][1]
+        )
+
+        kpi_cards(
+            [
+                (
+                    "Hành động π*",
+                    recommended_name,
+                    f"state={selected_state}",
+                ),
+                (
+                    "K",
+                    f"{recommended_shares[0]:.0%}",
+                    "vốn vật chất",
+                ),
+                (
+                    "D",
+                    f"{recommended_shares[1]:.0%}",
+                    "chuyển đổi số",
+                ),
+                (
+                    "AI và H",
+                    f"{recommended_shares[2]:.0%} / {recommended_shares[3]:.0%}",
+                    "AI / nhân lực",
+                ),
+            ]
+        )
+
+        q_value_table = pd.DataFrame(
+            {
+                "Hành động": [
+                    _B11_ACTIONS[
+                        action
+                    ][0]
+                    for action in range(
+                        5
+                    )
+                ],
+                "Q-value": selected_q,
+            }
+        ).sort_values(
+            "Q-value",
+            ascending=False,
+        )
+
+        st.dataframe(
+            q_value_table.style.format(
+                {"Q-value": "{:.4f}"}
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.plotly_chart(
+            plot_bar(
+                q_value_table,
+                "Hành động",
+                "Q-value",
+                "Q-value theo hành động tại trạng thái đã chọn",
+                text="Q-value",
+            ),
+            use_container_width=True,
+        )
+
+    # -----------------------------------------------------
+    # 11.3.4
+    # -----------------------------------------------------
+    with tab1134:
+        st.markdown(
+            "### Câu 11.3.4. So sánh Q-learning với chính sách rule-based"
+        )
+
+        q_result = (
+            _b11_evaluate_policy(
+                q_table=q_table,
+                episodes=500,
+                seed=7,
+            )
+        )
+
+        balanced_result = (
+            _b11_evaluate_policy(
+                fixed_action=1,
+                episodes=500,
+                seed=7,
+            )
+        )
+
+        ai_result = (
+            _b11_evaluate_policy(
+                fixed_action=3,
+                episodes=500,
+                seed=7,
+            )
+        )
+
+        inclusive_result = (
+            _b11_evaluate_policy(
+                fixed_action=4,
+                episodes=500,
+                seed=7,
+            )
+        )
+
+        random_result = (
+            _b11_evaluate_policy(
+                random_policy=True,
+                episodes=500,
+                seed=7,
+            )
+        )
+
+        evaluation_table = pd.DataFrame(
+            [
+                [
+                    "Q-learning π*",
+                    *q_result.values(),
+                ],
+                [
+                    "Luôn a1 - Cân bằng",
+                    *balanced_result.values(),
+                ],
+                [
+                    "Luôn a3 - AI dẫn dắt",
+                    *ai_result.values(),
+                ],
+                [
+                    "Luôn a4 - Bao trùm",
+                    *inclusive_result.values(),
+                ],
+                [
+                    "Random",
+                    *random_result.values(),
+                ],
+            ],
+            columns=[
+                "Chính sách",
+                "Reward trung bình",
+                "Độ lệch chuẩn",
+                "GDP cuối kỳ",
+                "Digital cuối kỳ",
+                "AI cuối kỳ",
+                "Thất nghiệp cuối kỳ",
+            ],
+        ).sort_values(
+            "Reward trung bình",
+            ascending=False,
+        )
+
+        best_policy = evaluation_table.iloc[
+            0
+        ][
+            "Chính sách"
+        ]
+
+        kpi_cards(
+            [
+                (
+                    "Chính sách tốt nhất",
+                    best_policy,
+                    "reward ngoài mẫu",
+                ),
+                (
+                    "Reward Q-learning",
+                    f"{q_result['mean_reward']:.4f}",
+                    "500 episodes",
+                ),
+                (
+                    "Độ lệch chuẩn",
+                    f"{q_result['std_reward']:.4f}",
+                    "ổn định chính sách",
+                ),
+                (
+                    "Thất nghiệp cuối kỳ",
+                    f"{q_result['mean_final_u']:.2f}",
+                    "0 thấp, 2 cao",
+                ),
+            ]
+        )
+
+        st.dataframe(
+            evaluation_table.style.format(
+                {
+                    "Reward trung bình": "{:.4f}",
+                    "Độ lệch chuẩn": "{:.4f}",
+                    "GDP cuối kỳ": "{:.2f}",
+                    "Digital cuối kỳ": "{:.2f}",
+                    "AI cuối kỳ": "{:.2f}",
+                    "Thất nghiệp cuối kỳ": "{:.2f}",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.plotly_chart(
+            plot_bar(
+                evaluation_table,
+                "Chính sách",
+                "Reward trung bình",
+                "So sánh reward tích lũy ngoài mẫu",
+                text="Reward trung bình",
+            ),
+            use_container_width=True,
+        )
+
+        st.info(
+            "Q-learning chỉ được coi là tốt hơn khi reward ngoài mẫu cao hơn hoặc ổn định hơn các quy tắc cố định."
+        )
+
+    # -----------------------------------------------------
+    # 11.3.5
+    # -----------------------------------------------------
+    with tab1135:
+        st.markdown(
+            "### Câu 11.3.5. Mở rộng bằng Deep Q-Network"
+        )
+
+        gym_available = False
+        sb3_available = False
+
+        try:
+            import gymnasium  # noqa: F401
+            gym_available = True
+        except ModuleNotFoundError:
+            gym_available = False
+
+        try:
+            import stable_baselines3  # noqa: F401
+            sb3_available = True
+        except ModuleNotFoundError:
+            sb3_available = False
+
+        dependency_table = pd.DataFrame(
+            {
+                "Thư viện": [
+                    "gymnasium",
+                    "stable-baselines3",
+                ],
+                "Trạng thái": [
+                    (
+                        "Đã cài"
+                        if gym_available
+                        else "Chưa cài"
+                    ),
+                    (
+                        "Đã cài"
+                        if sb3_available
+                        else "Chưa cài"
+                    ),
+                ],
+                "Bắt buộc để trang chạy": [
+                    "Không",
+                    "Không",
+                ],
+            }
+        )
+
+        st.dataframe(
+            dependency_table,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        if (
+            gym_available
+            and sb3_available
+        ):
+            st.success(
+                "Môi trường đã có Gymnasium và Stable-Baselines3. Có thể huấn luyện DQN."
+            )
+        else:
+            st.warning(
+                "DQN đang ở chế độ minh họa mã nguồn để tránh làm Streamlit Cloud nặng. "
+                "Tabular Q-learning phía trên vẫn chạy đầy đủ."
+            )
+
+        st.code(
+            """from stable_baselines3 import DQN
+
+model = DQN(
+    policy="MlpPolicy",
+    env=env,
+    learning_rate=1e-3,
+    buffer_size=50_000,
+    learning_starts=1_000,
+    batch_size=64,
+    gamma=0.95,
+    exploration_fraction=0.40,
+    exploration_final_eps=0.05,
+    policy_kwargs=dict(
+        net_arch=[64, 64]
+    ),
+    verbose=1
+)
+
+model.learn(
+    total_timesteps=50_000
+)
+
+obs, _ = env.reset()
+action, _ = model.predict(
+    obs,
+    deterministic=True
+)""",
+            language="python",
+        )
+
+        st.markdown(
+            """
+            **Tiêu chí đánh giá DQN:**
+
+            - reward ngoài mẫu phải cao hơn hoặc ổn định hơn Q-learning;
+            - kết quả phải được kiểm tra trên nhiều seed;
+            - tránh huấn luyện trực tiếp mỗi lần người dùng mở trang;
+            - nên huấn luyện offline, lưu model và chỉ tải model khi triển khai web.
+            """
+        )
+
+    # =====================================================
+    # Tải kết quả
+    # =====================================================
+    policy_export = (
+        _b11_representative_policy(
+            q_table
+        )
+    )
+
+    st.download_button(
+        "Tải chính sách đại diện Bài 11",
+        data=policy_export.to_csv(
+            index=False
+        ).encode(
+            "utf-8-sig"
+        ),
+        file_name="bai11_qlearning_policy.csv",
+        mime="text/csv",
+        key="download_bai11",
+    )
+
+    # =====================================================
+    # 11.4. Câu hỏi thảo luận chính sách
+    # =====================================================
+    st.markdown(
+        "## 11.4. Câu hỏi thảo luận chính sách"
+    )
+
+    low_state = (
+        0,
+        0,
+        0,
+        2,
+    )
+
+    high_state = (
+        2,
+        2,
+        2,
+        0,
+    )
+
+    low_action = int(
+        np.argmax(
+            q_table[
+                low_state
+            ]
+        )
+    )
+
+    high_action = int(
+        np.argmax(
+            q_table[
+                high_state
+            ]
+        )
+    )
+
+    with st.expander(
+        "a) Khi GDP thấp, số hóa thấp và thất nghiệp cao, chính sách chọn gì?",
+        expanded=True,
+    ):
+        st.markdown(
+            f"Chính sách học được chọn **{_B11_ACTIONS[low_action][0]}**. "
+            "Kết quả cần được diễn giải theo hàm thưởng: trong trạng thái khó khăn, "
+            "đào tạo lại và số hóa có thể tạo việc làm, trong khi AI dẫn dắt quá nhanh "
+            "có thể làm tăng rủi ro thất nghiệp."
+        )
+
+    with st.expander(
+        "b) Khi GDP cao, AI cao và thất nghiệp thấp, chính sách chọn gì?",
+        expanded=True,
+    ):
+        st.markdown(
+            f"Chính sách học được chọn **{_B11_ACTIONS[high_action][0]}**. "
+            "Trong trạng thái thuận lợi, tác nhân có thể tăng tốc AI hoặc chuyển sang "
+            "củng cố nền tảng và bao trùm tùy theo đánh đổi trong hàm phần thưởng."
+        )
+
+    with st.expander(
+        "c) Làm sao tích hợp π* mà không thay thế quyết định chính trị?",
+        expanded=True,
+    ):
+        st.markdown(
+            "Nên sử dụng π* như hệ thống khuyến nghị: công khai giả định, kiểm định theo "
+            "kịch bản, cho phép chuyên gia phản biện, lưu vết quyết định và để cơ quan có "
+            "thẩm quyền chịu trách nhiệm cuối cùng. Không nên tự động thực thi chính sách "
+            "chỉ dựa trên một mô hình mô phỏng."
+        )
 
 
 def page_12():
