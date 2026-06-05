@@ -313,79 +313,828 @@ def simulate_dynamic(shares, start=2026, end=2035, invest_rate=0.22, shock_2028=
 # Pages
 # =========================
 def page_home():
-    macro = load_macro()
-    sectors = load_sectors()
-    regions = load_regions()
-
-    hero(
-        "VN AIDEOM-VN",
-        "AI-Driven Decision Optimization Model for Vietnam. Dashboard này gom 12 bài mô hình ra quyết định thành một web trực quan: từ Cobb-Douglas, LP, MIP, TOPSIS đến Pareto, stochastic programming và Q-learning.",
-        ["Streamlit", "Python", "Optimization", "Vietnam 2020-2025"],
-    )
-
-    kpi_cards(
-        [
-            ("GDP 2025", f"{macro.loc[macro.year == 2025, 'GDP_billion_USD'].iloc[0]:,.1f} tỷ USD", "từ bộ dữ liệu macro"),
-            ("Kinh tế số / GDP", f"{macro.loc[macro.year == 2025, 'digital_economy_share_GDP_pct'].iloc[0]:.1f}%", "+1,2 điểm so với 2024"),
-            ("FDI giải ngân 2025", f"{macro.loc[macro.year == 2025, 'FDI_disbursed_billion_USD'].iloc[0]:.1f} tỷ USD", "macro indicator"),
-            ("Số vùng phân tích", f"{len(regions)} vùng", "TOPSIS và LP vùng"),
-        ]
-    )
-
-    section("Bản đồ 12 bài theo 4 cấp độ")
-    overview = pd.DataFrame(
-        [
-            ["Dễ", "Bài 1", "Cobb-Douglas mở rộng + AI", "TFP, MAPE, Growth accounting"],
-            ["Dễ", "Bài 2", "LP ngân sách số 4 hạng mục", "Phân bổ tối ưu, shadow price, sensitivity"],
-            ["Dễ", "Bài 3", "Priority 10 ngành", "Min-max, trọng số chính sách, top ngành"],
-            ["Trung bình", "Bài 4", "LP ngành-vùng", "24 biến, ràng buộc công bằng vùng"],
-            ["Trung bình", "Bài 5", "MIP 15 dự án", "Knapsack, precedence, ngân sách đa năm"],
-            ["Trung bình", "Bài 6", "TOPSIS 6 vùng", "Expert weight, entropy weight"],
-            ["Khá khó", "Bài 7", "Pareto đa mục tiêu", "Growth, inclusion, emission, data risk"],
-            ["Khá khó", "Bài 8", "Tối ưu động 2026-2035", "Quỹ đạo K-D-AI-H-Y-C"],
-            ["Khá khó", "Bài 9", "Lao động và AI", "NetJob, retraining capacity"],
-            ["Khó", "Bài 10", "Stochastic programming", "First-stage, recourse, VSS/EVPI"],
-            ["Khó", "Bài 11", "Q-learning", "Chính sách thích nghi theo trạng thái"],
-            ["Khó", "Bài 12", "AIDEOM tích hợp", "So sánh 5 kịch bản chính sách"],
-        ],
-        columns=["Cấp độ", "Trang", "Mô hình", "Kết quả chính"],
-    )
-    st.dataframe(overview, use_container_width=True, hide_index=True)
-
-    c1, c2 = st.columns([1.1, 1])
-    with c1:
-        fig = px.line(
-            macro,
-            x="year",
-            y=["GDP_trillion_VND", "exports_billion_USD", "FDI_disbursed_billion_USD"],
-            markers=True,
-            template=PLOT_TEMPLATE,
-            title="Tổng quan dữ liệu vĩ mô Việt Nam 2020-2025",
-        )
-        fig.update_layout(height=430, margin=dict(l=10, r=10, t=54, b=10))
-        st.plotly_chart(fig, use_container_width=True)
-    with c2:
-        fig2 = px.scatter(
-            regions,
-            x="digital_index_0_100",
-            y="ai_readiness_0_100",
-            size="grdp_trillion_VND",
-            color="region_name_vi",
-            template=PLOT_TEMPLATE,
-            title="Sẵn sàng số và AI theo vùng",
-            hover_name="region_name_vi",
-        )
-        fig2.update_layout(height=430, showlegend=False, margin=dict(l=10, r=10, t=54, b=10))
-        st.plotly_chart(fig2, use_container_width=True)
-
+    # -----------------------------------------------------
+    # CSS riêng cho trang chủ
+    # -----------------------------------------------------
     st.markdown(
         """
-        <div class="success-box">
-        <b>Gợi ý khi nộp bài:</b> Trang chủ nên đóng vai trò executive dashboard. Các trang sau đi vào kết quả từng mô hình, có bảng số, biểu đồ và diễn giải chính sách ngắn.
+        <style>
+        /* ---------- Khung tổng ---------- */
+        .aideom-home {
+            width: 100%;
+            margin: 0 auto;
+            padding: 0.2rem 0 2rem 0;
+        }
+
+        .aideom-home * {
+            box-sizing: border-box;
+        }
+
+        /* ---------- Hero ---------- */
+        .aideom-hero {
+            position: relative;
+            overflow: hidden;
+            padding: 2.15rem 2.2rem 2rem 2.2rem;
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            border-radius: 24px;
+            background:
+                radial-gradient(
+                    circle at 88% 12%,
+                    rgba(14, 165, 233, 0.16),
+                    transparent 30%
+                ),
+                radial-gradient(
+                    circle at 12% 88%,
+                    rgba(34, 197, 94, 0.10),
+                    transparent 28%
+                ),
+                linear-gradient(
+                    145deg,
+                    rgba(15, 23, 42, 0.98),
+                    rgba(17, 24, 39, 0.96)
+                );
+            box-shadow: 0 22px 60px rgba(2, 6, 23, 0.28);
+            margin-bottom: 1.35rem;
+        }
+
+        .aideom-hero::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(
+                    rgba(148, 163, 184, 0.035) 1px,
+                    transparent 1px
+                ),
+                linear-gradient(
+                    90deg,
+                    rgba(148, 163, 184, 0.035) 1px,
+                    transparent 1px
+                );
+            background-size: 28px 28px;
+            pointer-events: none;
+        }
+
+        .aideom-hero-content {
+            position: relative;
+            z-index: 2;
+        }
+
+        .aideom-eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.38rem 0.72rem;
+            margin-bottom: 1rem;
+            border-radius: 999px;
+            border: 1px solid rgba(34, 197, 94, 0.34);
+            background: rgba(6, 78, 59, 0.28);
+            color: #86efac;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .aideom-eyebrow-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            background: #22c55e;
+            box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.10);
+        }
+
+        .aideom-title {
+            margin: 0;
+            font-size: clamp(2.15rem, 4vw, 3.5rem);
+            line-height: 1.02;
+            letter-spacing: -0.045em;
+            font-weight: 900;
+            color: #f8fafc;
+        }
+
+        .aideom-title-accent {
+            background: linear-gradient(
+                90deg,
+                #f8fafc 0%,
+                #93c5fd 48%,
+                #5eead4 100%
+            );
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .aideom-subtitle {
+            margin: 0.85rem 0 0 0;
+            color: #cbd5e1;
+            font-size: clamp(1rem, 1.5vw, 1.24rem);
+            line-height: 1.65;
+            font-weight: 650;
+            font-style: italic;
+        }
+
+        .aideom-description {
+            max-width: 980px;
+            margin: 0.75rem 0 0 0;
+            color: #94a3b8;
+            font-size: 0.97rem;
+            line-height: 1.72;
+        }
+
+        .aideom-hero-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.55rem;
+            margin-top: 1.25rem;
+        }
+
+        .aideom-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.42rem 0.72rem;
+            border: 1px solid rgba(148, 163, 184, 0.20);
+            border-radius: 999px;
+            background: rgba(15, 23, 42, 0.58);
+            color: #dbeafe;
+            font-size: 0.79rem;
+            font-weight: 650;
+        }
+
+        /* ---------- KPI ---------- */
+        .aideom-kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 0.9rem;
+            margin: 1rem 0 1.7rem 0;
+        }
+
+        .aideom-kpi-card {
+            min-height: 142px;
+            padding: 1.05rem 1rem 0.95rem 1rem;
+            border: 1px solid rgba(148, 163, 184, 0.20);
+            border-radius: 18px;
+            background:
+                linear-gradient(
+                    180deg,
+                    rgba(30, 41, 59, 0.88),
+                    rgba(15, 23, 42, 0.88)
+                );
+            box-shadow: 0 12px 30px rgba(2, 6, 23, 0.18);
+            transition:
+                transform 160ms ease,
+                border-color 160ms ease,
+                box-shadow 160ms ease;
+        }
+
+        .aideom-kpi-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(56, 189, 248, 0.38);
+            box-shadow: 0 18px 34px rgba(2, 6, 23, 0.28);
+        }
+
+        .aideom-kpi-label {
+            color: #94a3b8;
+            font-size: 0.82rem;
+            font-weight: 650;
+            margin-bottom: 0.6rem;
+        }
+
+        .aideom-kpi-value {
+            color: #fb7185;
+            font-size: clamp(1.45rem, 2.1vw, 2.15rem);
+            line-height: 1.1;
+            font-weight: 900;
+            letter-spacing: -0.03em;
+        }
+
+        .aideom-kpi-note {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            margin-top: 0.72rem;
+            padding: 0.28rem 0.48rem;
+            border-radius: 999px;
+            background: rgba(5, 150, 105, 0.15);
+            color: #6ee7b7;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+
+        /* ---------- Section ---------- */
+        .aideom-section-head {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 1rem;
+            margin: 1.8rem 0 0.95rem 0;
+        }
+
+        .aideom-section-title {
+            margin: 0;
+            color: #f8fafc;
+            font-size: clamp(1.35rem, 2vw, 1.85rem);
+            line-height: 1.2;
+            font-weight: 850;
+            letter-spacing: -0.025em;
+        }
+
+        .aideom-section-subtitle {
+            margin: 0.28rem 0 0 0;
+            color: #94a3b8;
+            font-size: 0.88rem;
+            line-height: 1.5;
+        }
+
+        .aideom-section-badge {
+            flex: 0 0 auto;
+            padding: 0.38rem 0.65rem;
+            border: 1px solid rgba(56, 189, 248, 0.25);
+            border-radius: 999px;
+            background: rgba(14, 116, 144, 0.12);
+            color: #7dd3fc;
+            font-size: 0.76rem;
+            font-weight: 700;
+        }
+
+        /* ---------- Level cards ---------- */
+        .aideom-levels {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1rem;
+        }
+
+        .aideom-level-card {
+            padding: 1rem 1rem 0.9rem 1rem;
+            border: 1px solid rgba(148, 163, 184, 0.19);
+            border-radius: 18px;
+            background: rgba(15, 23, 42, 0.72);
+            box-shadow: 0 10px 26px rgba(2, 6, 23, 0.14);
+        }
+
+        .aideom-level-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 0.8rem;
+        }
+
+        .aideom-level-name {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            color: #f8fafc;
+            font-size: 0.95rem;
+            font-weight: 800;
+        }
+
+        .aideom-level-dot {
+            width: 11px;
+            height: 11px;
+            border-radius: 999px;
+            box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.035);
+        }
+
+        .level-green { background: #22c55e; }
+        .level-yellow { background: #facc15; }
+        .level-orange { background: #fb923c; }
+        .level-purple { background: #a78bfa; }
+
+        .aideom-level-count {
+            color: #64748b;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+
+        .aideom-task-row {
+            display: grid;
+            grid-template-columns: 58px minmax(0, 1fr);
+            gap: 0.75rem;
+            align-items: start;
+            padding: 0.72rem 0;
+            border-top: 1px solid rgba(148, 163, 184, 0.11);
+        }
+
+        .aideom-task-row:first-of-type {
+            border-top: none;
+        }
+
+        .aideom-task-code {
+            color: #e2e8f0;
+            font-weight: 850;
+            font-size: 0.84rem;
+        }
+
+        .aideom-task-name {
+            color: #cbd5e1;
+            font-size: 0.84rem;
+            line-height: 1.5;
+        }
+
+        .aideom-task-tech {
+            display: block;
+            margin-top: 0.22rem;
+            color: #64748b;
+            font-size: 0.73rem;
+            line-height: 1.4;
+        }
+
+        /* ---------- Features ---------- */
+        .aideom-feature-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0.9rem;
+        }
+
+        .aideom-feature-card {
+            padding: 1rem;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 17px;
+            background:
+                linear-gradient(
+                    160deg,
+                    rgba(30, 41, 59, 0.68),
+                    rgba(15, 23, 42, 0.72)
+                );
+        }
+
+        .aideom-feature-icon {
+            width: 38px;
+            height: 38px;
+            display: grid;
+            place-items: center;
+            margin-bottom: 0.75rem;
+            border-radius: 12px;
+            background: rgba(14, 165, 233, 0.12);
+            border: 1px solid rgba(56, 189, 248, 0.22);
+            font-size: 1.05rem;
+        }
+
+        .aideom-feature-title {
+            color: #f8fafc;
+            font-size: 0.92rem;
+            font-weight: 800;
+            margin-bottom: 0.35rem;
+        }
+
+        .aideom-feature-text {
+            color: #94a3b8;
+            font-size: 0.80rem;
+            line-height: 1.55;
+        }
+
+        /* ---------- Data strip ---------- */
+        .aideom-data-strip {
+            display: grid;
+            grid-template-columns: 1.3fr 1fr;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .aideom-data-card {
+            padding: 1rem;
+            border-radius: 17px;
+            border: 1px solid rgba(148, 163, 184, 0.17);
+            background: rgba(15, 23, 42, 0.64);
+        }
+
+        .aideom-data-title {
+            color: #e2e8f0;
+            font-size: 0.85rem;
+            font-weight: 800;
+            margin-bottom: 0.55rem;
+        }
+
+        .aideom-data-text {
+            color: #94a3b8;
+            font-size: 0.78rem;
+            line-height: 1.62;
+        }
+
+        .aideom-status-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+            margin-top: 0.55rem;
+        }
+
+        .aideom-status {
+            padding: 0.3rem 0.5rem;
+            border-radius: 999px;
+            font-size: 0.71rem;
+            font-weight: 700;
+            border: 1px solid rgba(34, 197, 94, 0.20);
+            background: rgba(22, 101, 52, 0.14);
+            color: #86efac;
+        }
+
+        /* ---------- Footer ---------- */
+        .aideom-footer {
+            margin-top: 1.6rem;
+            padding: 0.95rem 1rem;
+            border-top: 1px solid rgba(148, 163, 184, 0.15);
+            color: #64748b;
+            font-size: 0.74rem;
+            line-height: 1.55;
+            text-align: center;
+        }
+
+        /* ---------- Responsive ---------- */
+        @media (max-width: 1100px) {
+            .aideom-kpi-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .aideom-levels {
+                grid-template-columns: 1fr;
+            }
+
+            .aideom-feature-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .aideom-data-strip {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 720px) {
+            .aideom-hero {
+                padding: 1.45rem 1.1rem 1.35rem 1.1rem;
+                border-radius: 18px;
+            }
+
+            .aideom-kpi-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .aideom-feature-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .aideom-section-head {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # -----------------------------------------------------
+    # Nội dung trang chủ
+    # -----------------------------------------------------
+    st.markdown(
+        """
+        <div class="aideom-home">
+
+            <section class="aideom-hero">
+                <div class="aideom-hero-content">
+
+                    <div class="aideom-eyebrow">
+                        <span class="aideom-eyebrow-dot"></span>
+                        Decision Intelligence Platform
+                    </div>
+
+                    <h1 class="aideom-title">
+                        VN <span class="aideom-title-accent">AIDEOM-VN</span>
+                    </h1>
+
+                    <p class="aideom-subtitle">
+                        AI-Driven Decision Optimization Model for Vietnam
+                    </p>
+
+                    <p class="aideom-description">
+                        Nền tảng mô hình hóa và hỗ trợ ra quyết định phát triển kinh tế Việt Nam
+                        trong kỷ nguyên AI. Hệ thống tích hợp 12 bài toán từ dự báo tăng trưởng,
+                        phân bổ ngân sách, xếp hạng ưu tiên, tối ưu đa mục tiêu, bất định
+                        đến học tăng cường và dashboard chính sách.
+                    </p>
+
+                    <div class="aideom-hero-tags">
+                        <span class="aideom-tag">● Streamlit</span>
+                        <span class="aideom-tag">● Python</span>
+                        <span class="aideom-tag">● Optimization</span>
+                        <span class="aideom-tag">● AI & Digital Economy</span>
+                        <span class="aideom-tag">● Vietnam 2020–2035</span>
+                    </div>
+
+                </div>
+            </section>
+
+            <section class="aideom-kpi-grid">
+
+                <article class="aideom-kpi-card">
+                    <div class="aideom-kpi-label">GDP Việt Nam 2025</div>
+                    <div class="aideom-kpi-value">514,0 tỷ USD</div>
+                    <div class="aideom-kpi-note">↗ 8,02% so với 2024</div>
+                </article>
+
+                <article class="aideom-kpi-card">
+                    <div class="aideom-kpi-label">Kinh tế số / GDP</div>
+                    <div class="aideom-kpi-value">≈ 19,5%</div>
+                    <div class="aideom-kpi-note">↗ 1,2 điểm phần trăm</div>
+                </article>
+
+                <article class="aideom-kpi-card">
+                    <div class="aideom-kpi-label">FDI giải ngân 2025</div>
+                    <div class="aideom-kpi-value">27,6 tỷ USD</div>
+                    <div class="aideom-kpi-note">↗ 8,9% cùng kỳ</div>
+                </article>
+
+                <article class="aideom-kpi-card">
+                    <div class="aideom-kpi-label">GDP bình quân đầu người</div>
+                    <div class="aideom-kpi-value">5.026 USD</div>
+                    <div class="aideom-kpi-note">↗ 6,9% theo giá hiện hành</div>
+                </article>
+
+            </section>
+
+            <div class="aideom-section-head">
+                <div>
+                    <h2 class="aideom-section-title">📚 12 bài toán theo 4 cấp độ</h2>
+                    <p class="aideom-section-subtitle">
+                        Lộ trình từ mô hình nền tảng đến hệ thống hỗ trợ quyết định tích hợp.
+                    </p>
+                </div>
+                <div class="aideom-section-badge">12 models · 4 levels</div>
+            </div>
+
+            <section class="aideom-levels">
+
+                <article class="aideom-level-card">
+                    <div class="aideom-level-head">
+                        <div class="aideom-level-name">
+                            <span class="aideom-level-dot level-green"></span>
+                            CẤP ĐỘ DỄ — Làm quen mô hình
+                        </div>
+                        <div class="aideom-level-count">Bài 1–3</div>
+                    </div>
+
+                    <div class="aideom-task-row">
+                        <div class="aideom-task-code">Bài 1</div>
+                        <div class="aideom-task-name">
+                            Hàm sản xuất Cobb–Douglas mở rộng và Growth Accounting
+                            <span class="aideom-task-tech">
+                                TFP · dự báo GDP 2030 · phân rã tăng trưởng
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="aideom-task-row">
+                        <div class="aideom-task-code">Bài 2</div>
+                        <div class="aideom-task-name">
+                            LP phân bổ ngân sách số cho bốn hạng mục
+                            <span class="aideom-task-tech">
+                                SciPy · shadow price · phân tích độ nhạy
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="aideom-task-row">
+                        <div class="aideom-task-code">Bài 3</div>
+                        <div class="aideom-task-name">
+                            Chỉ số ưu tiên cho 10 ngành Việt Nam
+                            <span class="aideom-task-tech">
+                                Min-max · weighted scoring · policy sensitivity
+                            </span>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="aideom-level-card">
+                    <div class="aideom-level-head">
+                        <div class="aideom-level-name">
+                            <span class="aideom-level-dot level-yellow"></span>
+                            CẤP ĐỘ TRUNG BÌNH — Tối ưu cổ điển
+                        </div>
+                        <div class="aideom-level-count">Bài 4–6</div>
+                    </div>
+
+                    <div class="aideom-task-row">
+                        <div class="aideom-task-code">Bài 4</div>
+                        <div class="aideom-task-name">
+                            LP phân bổ ngân sách số ngành–vùng
+                            <span class="aideom-task-tech">
+                                24 biến · fairness · PuLP · CVXPY
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="aideom-task-row">
+                        <div class="aideom-task-code">Bài 5</div>
+                        <div class="aideom-task-name">
+                            MIP lựa chọn 15 dự án chuyển đổi số
+                            <span class="aideom-task-tech">
+                                Binary · knapsack · prerequisite · CBC
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="aideom-task-row">
+                        <div class="aideom-task-code">Bài 6</div>
+                        <div class="aideom-task-name">
+                            TOPSIS xếp hạng sáu vùng kinh tế
+                            <span class="aideom-task-tech">
+                                Expert weight · Entropy · AHP · sensitivity
+                            </span>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="aideom-level-card">
+                    <div class="aideom-level-head">
+                        <div class="aideom-level-name">
+                            <span class="aideom-level-dot level-orange"></span>
+                            CẤP ĐỘ NÂNG CAO — Đa mục tiêu và động
+                        </div>
+                        <div class="aideom-level-count">Bài 7–9</div>
+                    </div>
+
+                    <div class="aideom-task-row">
+                        <div class="aideom-task-code">Bài 7</div>
+                        <div class="aideom-task-name">
+                            Pareto đa mục tiêu và khung NSGA-II
+                            <span class="aideom-task-tech">
+                                Growth · inclusion · emission · data risk
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="aideom-task-row">
+                        <div class="aideom-task-code">Bài 8</div>
+                        <div class="aideom-task-name">
+                            Tối ưu động liên thời gian 2026–2035
+                            <span class="aideom-task-tech">
+                                SLSQP · welfare · shock 2028 · front-load
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="aideom-task-row">
+                        <div class="aideom-task-code">Bài 9</div>
+                        <div class="aideom-task-name">
+                            Tác động AI tới thị trường lao động
+                            <span class="aideom-task-tech">
+                                NetJob · retraining · vulnerable groups · Sankey
+                            </span>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="aideom-level-card">
+                    <div class="aideom-level-head">
+                        <div class="aideom-level-name">
+                            <span class="aideom-level-dot level-purple"></span>
+                            CẤP ĐỘ CHUYÊN SÂU — Bất định và thích nghi
+                        </div>
+                        <div class="aideom-level-count">Bài 10–12</div>
+                    </div>
+
+                    <div class="aideom-task-row">
+                        <div class="aideom-task-code">Bài 10</div>
+                        <div class="aideom-task-name">
+                            Quy hoạch ngẫu nhiên hai giai đoạn
+                            <span class="aideom-task-tech">
+                                SP · EV · VSS · EVPI · robust optimization
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="aideom-task-row">
+                        <div class="aideom-task-code">Bài 11</div>
+                        <div class="aideom-task-name">
+                            Q-learning cho chính sách kinh tế thích nghi
+                            <span class="aideom-task-tech">
+                                MDP · tabular Q-learning · DQN extension
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="aideom-task-row">
+                        <div class="aideom-task-code">Bài 12</div>
+                        <div class="aideom-task-name">
+                            AIDEOM-VN tích hợp
+                            <span class="aideom-task-tech">
+                                6 modules · 5 scenarios · KPI · alerts · recommendations
+                            </span>
+                        </div>
+                    </div>
+                </article>
+
+            </section>
+
+            <div class="aideom-section-head">
+                <div>
+                    <h2 class="aideom-section-title">🧠 Năng lực của hệ thống</h2>
+                    <p class="aideom-section-subtitle">
+                        Một dashboard, nhiều lớp phân tích và công cụ ra quyết định.
+                    </p>
+                </div>
+                <div class="aideom-section-badge">Decision support stack</div>
+            </div>
+
+            <section class="aideom-feature-grid">
+
+                <article class="aideom-feature-card">
+                    <div class="aideom-feature-icon">📈</div>
+                    <div class="aideom-feature-title">Dự báo & mô phỏng</div>
+                    <div class="aideom-feature-text">
+                        Dự báo GDP, TFP, quỹ đạo vốn, số hóa, AI và nhân lực theo thời gian.
+                    </div>
+                </article>
+
+                <article class="aideom-feature-card">
+                    <div class="aideom-feature-icon">⚙️</div>
+                    <div class="aideom-feature-title">Tối ưu hóa</div>
+                    <div class="aideom-feature-text">
+                        LP, MIP, stochastic programming, dynamic optimization và robust optimization.
+                    </div>
+                </article>
+
+                <article class="aideom-feature-card">
+                    <div class="aideom-feature-icon">🏆</div>
+                    <div class="aideom-feature-title">Xếp hạng đa tiêu chí</div>
+                    <div class="aideom-feature-text">
+                        TOPSIS, Entropy, AHP, chỉ số Priority và phân tích độ nhạy trọng số.
+                    </div>
+                </article>
+
+                <article class="aideom-feature-card">
+                    <div class="aideom-feature-icon">🌐</div>
+                    <div class="aideom-feature-title">Đa mục tiêu</div>
+                    <div class="aideom-feature-text">
+                        Pareto, đánh đổi tăng trưởng–bao trùm–môi trường–an ninh dữ liệu.
+                    </div>
+                </article>
+
+                <article class="aideom-feature-card">
+                    <div class="aideom-feature-icon">🤖</div>
+                    <div class="aideom-feature-title">Chính sách thích nghi</div>
+                    <div class="aideom-feature-text">
+                        Q-learning và khung DQN cho cơ cấu đầu tư theo trạng thái kinh tế.
+                    </div>
+                </article>
+
+                <article class="aideom-feature-card">
+                    <div class="aideom-feature-icon">🛡️</div>
+                    <div class="aideom-feature-title">Cảnh báo rủi ro</div>
+                    <div class="aideom-feature-text">
+                        Theo dõi cyber risk, phát thải, việc làm, công bằng vùng và năng lực hấp thụ.
+                    </div>
+                </article>
+
+            </section>
+
+            <section class="aideom-data-strip">
+
+                <article class="aideom-data-card">
+                    <div class="aideom-data-title">📁 Hệ dữ liệu sử dụng</div>
+                    <div class="aideom-data-text">
+                        Dữ liệu vĩ mô, ngành và vùng Việt Nam giai đoạn 2020–2025;
+                        tham số mô phỏng được cấu trúc cho các bài toán chính sách
+                        giai đoạn 2026–2035.
+                    </div>
+
+                    <div class="aideom-status-list">
+                        <span class="aideom-status">Macro</span>
+                        <span class="aideom-status">10 sectors</span>
+                        <span class="aideom-status">6 regions</span>
+                        <span class="aideom-status">Scenarios</span>
+                        <span class="aideom-status">Policy parameters</span>
+                    </div>
+                </article>
+
+                <article class="aideom-data-card">
+                    <div class="aideom-data-title">✅ Trạng thái hệ thống</div>
+                    <div class="aideom-data-text">
+                        12/12 trang mô hình đã được cấu trúc thành dashboard tương tác.
+                        Chọn bài ở thanh điều hướng bên trái để xem mô hình, kết quả,
+                        biểu đồ và diễn giải chính sách.
+                    </div>
+
+                    <div class="aideom-status-list">
+                        <span class="aideom-status">Online</span>
+                        <span class="aideom-status">Interactive</span>
+                        <span class="aideom-status">Downloadable results</span>
+                    </div>
+                </article>
+
+            </section>
+
+            <footer class="aideom-footer">
+                VN AIDEOM-VN · AI-Driven Decision Optimization Model for Vietnam<br>
+                Python · Streamlit · SciPy · PuLP · CVXPY · Plotly
+            </footer>
+
         </div>
         """,
         unsafe_allow_html=True,
     )
+
 
 
 def page_1():
