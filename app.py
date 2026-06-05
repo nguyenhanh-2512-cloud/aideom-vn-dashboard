@@ -3073,11 +3073,7 @@ model.solve(
         )
 
 
-def _b5_project_table():
-    """
-    Danh mục 15 dự án chuyển đổi số giai đoạn 2026-2030.
-    Đơn vị chi phí và NPV: tỷ VND.
-    """
+def project_table():
     rows = [
         ("P1", "Trung tâm dữ liệu quốc gia Hòa Lạc", "Hạ tầng", 12000, 21500, 8500, 3500),
         ("P2", "Trung tâm dữ liệu quốc gia phía Nam", "Hạ tầng", 11500, 20800, 7500, 4000),
@@ -3091,991 +3087,87 @@ def _b5_project_table():
         ("P10", "Logistics thông minh + cảng biển số", "Logistics", 7200, 13800, 5000, 2200),
         ("P11", "Nông nghiệp số ĐBSCL", "Nông nghiệp", 4800, 8500, 3500, 1300),
         ("P12", "Đào tạo 50.000 kỹ sư AI/bán dẫn", "Nhân lực", 8500, 16200, 5500, 3000),
-        ("P13", "Khu công nghiệp bán dẫn Bắc Ninh - Bắc Giang", "Bán dẫn", 20000, 35000, 13000, 7000),
+        ("P13", "Khu CN bán dẫn Bắc Ninh - Bắc Giang", "Bán dẫn", 20000, 35000, 13000, 7000),
         ("P14", "An ninh mạng quốc gia SOC", "An ninh", 3800, 7500, 2800, 1000),
         ("P15", "Open Data + dữ liệu mở quốc gia", "Dữ liệu", 1500, 3800, 1200, 300),
     ]
-
-    return pd.DataFrame(
-        rows,
-        columns=[
-            "Mã",
-            "Tên dự án",
-            "Lĩnh vực",
-            "Chi phí",
-            "NPV",
-            "Năm 1-2",
-            "Năm 3-5",
-        ],
-    )
+    return pd.DataFrame(rows, columns=["Mã", "Tên dự án", "Lĩnh vực", "Chi phí", "NPV", "Năm 1-2", "Năm 3-5"])
 
 
-def _b5_completion_probability(field):
-    """
-    Xác suất hoàn thành theo lĩnh vực dùng cho câu 5.4.4.
-    """
-    if field == "Hạ tầng":
-        return 0.85
-    if field == "Chính phủ số":
-        return 0.75
-    if field in {"AI", "Bán dẫn"}:
-        return 0.65
-    return 0.80
-
-
-def _b5_solve_bruteforce(
-    budget=80000,
-    expected_benefit=False,
-    force_both_centers=False,
-):
-    """
-    Bộ giải dự phòng bằng vét cạn 2^15 tổ hợp.
-    Dùng khi môi trường chưa cài PuLP hoặc để kiểm tra chéo nghiệm.
-    """
-    df = _b5_project_table()
-
-    probability = (
-        df["Lĩnh vực"]
-        .map(_b5_completion_probability)
-        .to_numpy(dtype=float)
-    )
-
-    benefit = df["NPV"].to_numpy(dtype=float)
-
-    if expected_benefit:
-        benefit = benefit * probability
-
-    cost = df["Chi phí"].to_numpy(dtype=float)
-    cost_12 = df["Năm 1-2"].to_numpy(dtype=float)
-
+def solve_mip_bruteforce(budget=80000, require_p1p2=False):
+    df = project_table()
     best = None
     n = len(df)
-
     for mask in range(1 << n):
-        y = np.array(
-            [(mask >> i) & 1 for i in range(n)],
-            dtype=int,
-        )
-
-        # Chọn từ 7 đến 11 dự án
+        y = np.array([(mask >> i) & 1 for i in range(n)])
         if y.sum() < 7 or y.sum() > 11:
             continue
-
-        # Ngân sách tổng 5 năm
-        if float(cost @ y) > budget:
+        cost = (df["Chi phí"].values * y).sum()
+        cost12 = (df["Năm 1-2"].values * y).sum()
+        benefit = (df["NPV"].values * y).sum()
+        if cost > budget or cost12 > 40000:
             continue
-
-        # Ngân sách năm 1-2
-        if float(cost_12 @ y) > 40000:
-            continue
-
-        # P1 và P2 loại trừ nhau
         if y[0] + y[1] > 1:
             continue
-
-        # Kịch bản kiểm tra bắt buộc cả P1 và P2
-        if force_both_centers and not (y[0] == 1 and y[1] == 1):
+        if require_p1p2 and (y[0] + y[1] < 2):
             continue
-
-        # P8 và P13 chỉ được chọn khi có P12
         if y[7] > y[11]:
             continue
-
         if y[12] > y[11]:
             continue
-
-        # Ít nhất một trong P4 và P5
         if y[3] + y[4] < 1:
             continue
-
-        # P14 bắt buộc
-        if y[13] != 1:
+        if y[13] < 1:
             continue
-
-        objective = float(benefit @ y)
-
-        if best is None or objective > best["objective"]:
-            best = {
-                "objective": objective,
-                "cost": float(cost @ y),
-                "cost_12": float(cost_12 @ y),
-                "y": y,
-                "solver": "Brute force",
-                "status": "Optimal",
-            }
-
-    return best, df
-
-
-def _b5_solve_pulp(
-    budget=80000,
-    expected_benefit=False,
-    force_both_centers=False,
-):
-    """
-    Giải MIP bằng PuLP/CBC.
-    Nếu PuLP chưa được cài hoặc CBC không chạy, tự động dùng brute force.
-    """
-    df = _b5_project_table()
-
-    try:
-        import pulp
-    except ModuleNotFoundError:
-        return _b5_solve_bruteforce(
-            budget=budget,
-            expected_benefit=expected_benefit,
-            force_both_centers=force_both_centers,
-        )
-
-    probability = (
-        df["Lĩnh vực"]
-        .map(_b5_completion_probability)
-        .to_numpy(dtype=float)
-    )
-
-    benefit = df["NPV"].to_numpy(dtype=float)
-
-    if expected_benefit:
-        benefit = benefit * probability
-
-    cost = df["Chi phí"].to_numpy(dtype=float)
-    cost_12 = df["Năm 1-2"].to_numpy(dtype=float)
-
-    model = pulp.LpProblem(
-        "Vietnam_Digital_Project_Selection",
-        pulp.LpMaximize,
-    )
-
-    y = {
-        i: pulp.LpVariable(
-            f"y_{i+1}",
-            cat="Binary",
-        )
-        for i in range(len(df))
-    }
-
-    # Hàm mục tiêu
-    model += pulp.lpSum(
-        benefit[i] * y[i]
-        for i in range(len(df))
-    ), "Total_Benefit"
-
-    # C1. Ngân sách tổng
-    model += (
-        pulp.lpSum(
-            cost[i] * y[i]
-            for i in range(len(df))
-        )
-        <= budget
-    ), "C1_Total_Budget"
-
-    # C2. Ngân sách năm 1-2
-    model += (
-        pulp.lpSum(
-            cost_12[i] * y[i]
-            for i in range(len(df))
-        )
-        <= 40000
-    ), "C2_Budget_Year_1_2"
-
-    # C3. P1 và P2 loại trừ nhau
-    model += (
-        y[0] + y[1] <= 1
-    ), "C3_Data_Center_Exclusion"
-
-    # C4. P8 và P13 chỉ được chọn khi có P12
-    model += (
-        y[7] <= y[11]
-    ), "C4_AI_Requires_Training"
-
-    model += (
-        y[12] <= y[11]
-    ), "C5_Semiconductor_Requires_Training"
-
-    # C5. Ít nhất một trong P4, P5
-    model += (
-        y[3] + y[4] >= 1
-    ), "C6_EGovernment_Minimum"
-
-    # C6. P14 bắt buộc
-    model += (
-        y[13] == 1
-    ), "C7_Cybersecurity_Mandatory"
-
-    # C7. Chọn từ 7 đến 11 dự án
-    model += (
-        pulp.lpSum(
-            y[i]
-            for i in range(len(df))
-        )
-        >= 7
-    ), "C8_Min_Number_Projects"
-
-    model += (
-        pulp.lpSum(
-            y[i]
-            for i in range(len(df))
-        )
-        <= 11
-    ), "C9_Max_Number_Projects"
-
-    # Kịch bản bắt buộc cả P1 và P2
-    if force_both_centers:
-        model += y[0] == 1, "C10_Force_P1"
-        model += y[1] == 1, "C11_Force_P2"
-
-    try:
-        model.solve(
-            pulp.PULP_CBC_CMD(
-                msg=False
-            )
-        )
-    except Exception:
-        return _b5_solve_bruteforce(
-            budget=budget,
-            expected_benefit=expected_benefit,
-            force_both_centers=force_both_centers,
-        )
-
-    status = pulp.LpStatus[
-        model.status
-    ]
-
-    if status != "Optimal":
-        return None, df
-
-    y_value = np.array(
-        [
-            int(round(y[i].value()))
-            for i in range(len(df))
-        ],
-        dtype=int,
-    )
-
-    return {
-        "objective": float(
-            pulp.value(
-                model.objective
-            )
-        ),
-        "cost": float(
-            cost @ y_value
-        ),
-        "cost_12": float(
-            cost_12 @ y_value
-        ),
-        "y": y_value,
-        "solver": "PuLP/CBC",
-        "status": status,
-    }, df
-
-
-def _b5_selected_table(solution, df):
-    """
-    Tạo bảng các dự án được chọn.
-    """
-    selected = df[
-        solution["y"] == 1
-    ].copy()
-
-    selected["NPV/Chi phí"] = (
-        selected["NPV"]
-        / selected["Chi phí"]
-    )
-
-    selected["Xác suất hoàn thành"] = (
-        selected["Lĩnh vực"]
-        .map(_b5_completion_probability)
-    )
-
-    selected["NPV kỳ vọng"] = (
-        selected["NPV"]
-        * selected["Xác suất hoàn thành"]
-    )
-
-    return selected
+        if best is None or benefit > best[0]:
+            best = (benefit, cost, cost12, y)
+    return best
 
 
 def page_5():
     hero(
-        "Bài 5 — Quy hoạch nguyên hỗn hợp lựa chọn dự án chuyển đổi số",
-        "Trình bày đầy đủ các mục 5.1-5.5: 15 dự án, ngân sách đa năm, loại trừ, tiên quyết, dự án bắt buộc và lợi ích kỳ vọng có rủi ro.",
-        ["5.1-5.5", "MIP", "PuLP", "Binary", "Project risk"],
+        "Bài 5 — MIP lựa chọn 15 dự án chuyển đổi số",
+        "Bài toán knapsack tổng quát hóa với biến nhị phân, ràng buộc loại trừ, tiên quyết, ngân sách đa năm và số lượng dự án.",
+        ["MIP", "Binary selection", "Knapsack"],
     )
+    budget = st.slider("Ngân sách tổng 5 năm", 70000, 105000, 80000, 5000)
+    require_p1p2 = st.checkbox("Thử kịch bản bắt buộc cả P1 và P2 nhưng vẫn giữ ràng buộc loại trừ")
+    best = solve_mip_bruteforce(budget, require_p1p2=require_p1p2)
+    df = project_table()
 
-    df = _b5_project_table()
-
-    # =====================================================
-    # 5.1. Bối cảnh Việt Nam
-    # =====================================================
-    st.markdown(
-        "## 5.1. Bối cảnh Việt Nam"
-    )
-
-    st.markdown(
-        """
-        Chương trình chuyển đổi số quốc gia giai đoạn 2026-2030 có
-        **15 dự án ứng cử**, nhưng ngân sách chỉ có **80.000 tỷ VND**.
-        Mỗi dự án có chi phí, NPV, tiến độ giải ngân, xác suất hoàn thành
-        và quan hệ phụ thuộc khác nhau.
-
-        Bài toán cần lựa chọn một **danh mục dự án tối ưu**, thay vì đánh giá
-        từng dự án riêng lẻ.
-        """
-    )
-
-    # =====================================================
-    # 5.2. Danh mục dự án
-    # =====================================================
-    st.markdown(
-        "## 5.2. Danh mục 15 dự án ứng cử"
-    )
-
-    display_df = df.copy()
-
-    display_df[
-        "Xác suất hoàn thành"
-    ] = (
-        display_df["Lĩnh vực"]
-        .map(_b5_completion_probability)
-    )
-
-    display_df[
-        "NPV kỳ vọng"
-    ] = (
-        display_df["NPV"]
-        * display_df[
-            "Xác suất hoàn thành"
-        ]
-    )
-
-    st.dataframe(
-        display_df,
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    # =====================================================
-    # 5.3. Mô hình toán học
-    # =====================================================
-    st.markdown(
-        "## 5.3. Mô hình toán học"
-    )
-
-    st.markdown(
-        "### Biến quyết định"
-    )
-
-    st.latex(
-        r"y_i="
-        r"\begin{cases}"
-        r"1,&\text{nếu dự án }i\text{ được chọn}\\"
-        r"0,&\text{nếu dự án }i\text{ không được chọn}"
-        r"\end{cases}"
-    )
-
-    st.markdown(
-        "### Hàm mục tiêu"
-    )
-
-    st.latex(
-        r"\max Z="
-        r"\sum_{i=1}^{15}"
-        r"B_iy_i"
-    )
-
-    st.markdown(
-        "### Các ràng buộc"
-    )
-
-    st.latex(
-        r"\sum_iC_iy_i"
-        r"\leq80{,}000"
-    )
-
-    st.latex(
-        r"\sum_iC_{1,i}y_i"
-        r"\leq40{,}000"
-    )
-
-    st.latex(
-        r"y_1+y_2\leq1"
-    )
-
-    st.latex(
-        r"y_8\leq y_{12},\quad"
-        r"y_{13}\leq y_{12}"
-    )
-
-    st.latex(
-        r"y_4+y_5\geq1"
-    )
-
-    st.latex(
-        r"y_{14}=1"
-    )
-
-    st.latex(
-        r"7\leq\sum_iy_i\leq11"
-    )
-
-    st.latex(
-        r"y_i\in\{0,1\}"
-    )
-
-    # Nghiệm cơ sở
-    base_solution, _ = _b5_solve_pulp(
-        budget=80000,
-        expected_benefit=False,
-        force_both_centers=False,
-    )
-
-    if base_solution is None:
-        st.error(
-            "Không tìm thấy danh mục khả thi cho bài toán cơ sở."
-        )
+    if best is None:
+        st.error("Không khả thi: yêu cầu chọn cả P1 và P2 xung đột trực tiếp với ràng buộc y₁ + y₂ ≤ 1.")
+        st.dataframe(df, use_container_width=True, hide_index=True)
         return
 
-    # =====================================================
-    # 5.4. Yêu cầu lập trình
-    # =====================================================
-    st.markdown(
-        "## 5.4. Yêu cầu lập trình"
-    )
+    benefit, cost, cost12, y = best
+    selected = df[y == 1].copy()
+    selected["NPV/Chi phí"] = selected["NPV"] / selected["Chi phí"]
 
-    tab541, tab542, tab543, tab544 = st.tabs(
+    kpi_cards(
         [
-            "5.4.1 - Danh mục tối ưu",
-            "5.4.2 - Ngân sách 100.000",
-            "5.4.3 - Bắt buộc P1 và P2",
-            "5.4.4 - Lợi ích kỳ vọng",
+            ("Tổng NPV", f"{benefit:,.0f}", "tỷ VND"),
+            ("Tổng chi phí", f"{cost:,.0f}", f"ngân sách {budget:,.0f}"),
+            ("Số dự án", f"{int(y.sum())}", "ràng buộc 7-11"),
+            ("NPV/Chi phí", f"{benefit / cost:.2f}", "hiệu quả danh mục"),
         ]
     )
-
-    # -----------------------------------------------------
-    # 5.4.1
-    # -----------------------------------------------------
-    with tab541:
-        st.markdown(
-            "### Câu 5.4.1. Giải bằng PuLP và xác định danh mục tối ưu"
-        )
-
-        selected_base = _b5_selected_table(
-            base_solution,
-            df,
-        )
-
-        kpi_cards(
-            [
-                (
-                    "Trạng thái",
-                    base_solution["status"],
-                    base_solution["solver"],
-                ),
-                (
-                    "Tổng NPV",
-                    f"{base_solution['objective']:,.0f}",
-                    "tỷ VND",
-                ),
-                (
-                    "Tổng chi phí",
-                    f"{base_solution['cost']:,.0f}",
-                    "tỷ VND",
-                ),
-                (
-                    "Số dự án",
-                    f"{int(base_solution['y'].sum())}",
-                    "giới hạn 7-11",
-                ),
-            ]
-        )
-
-        st.dataframe(
-            selected_base,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        fig_npv = px.bar(
-            selected_base,
-            x="Mã",
-            y="NPV",
-            color="Lĩnh vực",
-            hover_name="Tên dự án",
-            template=PLOT_TEMPLATE,
-            title="NPV của các dự án được chọn",
-        )
-
-        fig_npv.update_layout(
-            height=470,
-            margin=dict(
-                l=10,
-                r=10,
-                t=54,
-                b=10,
-            ),
-        )
-
-        st.plotly_chart(
-            fig_npv,
-            use_container_width=True,
-        )
-
-        budget_check = pd.DataFrame(
-            {
-                "Chỉ tiêu": [
-                    "Ngân sách tổng",
-                    "Ngân sách năm 1-2",
-                    "Số dự án",
-                    "P14 bắt buộc",
-                    "P4 hoặc P5",
-                ],
-                "Giá trị thực tế": [
-                    base_solution["cost"],
-                    base_solution["cost_12"],
-                    int(
-                        base_solution["y"].sum()
-                    ),
-                    int(
-                        base_solution["y"][13]
-                    ),
-                    int(
-                        base_solution["y"][3]
-                        + base_solution["y"][4]
-                    ),
-                ],
-                "Giới hạn": [
-                    "≤ 80.000",
-                    "≤ 40.000",
-                    "7-11",
-                    "= 1",
-                    "≥ 1",
-                ],
-            }
-        )
-
-        st.markdown(
-            "#### Kiểm tra các ràng buộc chính"
-        )
-
-        st.dataframe(
-            budget_check,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        with st.expander(
-            "Xem mã PuLP rút gọn"
-        ):
-            st.code(
-                """model = pulp.LpProblem(
-    "ProjectSelection",
-    pulp.LpMaximize
-)
-
-y = {
-    i: pulp.LpVariable(
-        f"y_{i+1}",
-        cat="Binary"
-    )
-    for i in range(15)
-}
-
-model += pulp.lpSum(
-    NPV[i] * y[i]
-    for i in range(15)
-)
-
-model += pulp.lpSum(
-    Cost[i] * y[i]
-    for i in range(15)
-) <= 80000
-
-model.solve(
-    pulp.PULP_CBC_CMD(msg=False)
-)""",
-                language="python",
-            )
-
-    # -----------------------------------------------------
-    # 5.4.2
-    # -----------------------------------------------------
-    with tab542:
-        st.markdown(
-            "### Câu 5.4.2. Tăng ngân sách lên 100.000 tỷ VND"
-        )
-
-        high_solution, _ = _b5_solve_pulp(
-            budget=100000,
-            expected_benefit=False,
-            force_both_centers=False,
-        )
-
-        if high_solution is None:
-            st.error(
-                "Không tìm thấy nghiệm cho ngân sách 100.000 tỷ VND."
-            )
-        else:
-            selected_high = _b5_selected_table(
-                high_solution,
-                df,
-            )
-
-            base_codes = set(
-                df.loc[
-                    base_solution["y"] == 1,
-                    "Mã",
-                ]
-            )
-
-            high_codes = set(
-                df.loc[
-                    high_solution["y"] == 1,
-                    "Mã",
-                ]
-            )
-
-            added_projects = sorted(
-                high_codes - base_codes
-            )
-
-            removed_projects = sorted(
-                base_codes - high_codes
-            )
-
-            comparison_budget = pd.DataFrame(
-                {
-                    "Chỉ tiêu": [
-                        "Ngân sách giới hạn",
-                        "Tổng chi phí",
-                        "Tổng NPV",
-                        "Số dự án",
-                        "Chi phí năm 1-2",
-                    ],
-                    "B = 80.000": [
-                        80000,
-                        base_solution["cost"],
-                        base_solution["objective"],
-                        int(
-                            base_solution["y"].sum()
-                        ),
-                        base_solution["cost_12"],
-                    ],
-                    "B = 100.000": [
-                        100000,
-                        high_solution["cost"],
-                        high_solution["objective"],
-                        int(
-                            high_solution["y"].sum()
-                        ),
-                        high_solution["cost_12"],
-                    ],
-                }
-            )
-
-            kpi_cards(
-                [
-                    (
-                        "NPV mới",
-                        f"{high_solution['objective']:,.0f}",
-                        "tỷ VND",
-                    ),
-                    (
-                        "NPV tăng",
-                        f"{high_solution['objective']-base_solution['objective']:,.0f}",
-                        "so với B=80.000",
-                    ),
-                    (
-                        "Dự án bổ sung",
-                        ", ".join(
-                            added_projects
-                        )
-                        if added_projects
-                        else "Không có",
-                        "so với mô hình cơ sở",
-                    ),
-                    (
-                        "Dự án bị thay",
-                        ", ".join(
-                            removed_projects
-                        )
-                        if removed_projects
-                        else "Không có",
-                        "thay đổi danh mục",
-                    ),
-                ]
-            )
-
-            st.dataframe(
-                comparison_budget,
-                use_container_width=True,
-                hide_index=True,
-            )
-
-            st.dataframe(
-                selected_high,
-                use_container_width=True,
-                hide_index=True,
-            )
-
-    # -----------------------------------------------------
-    # 5.4.3
-    # -----------------------------------------------------
-    with tab543:
-        st.markdown(
-            "### Câu 5.4.3. Bắt buộc xây dựng cả P1 và P2"
-        )
-
-        forced_solution, _ = _b5_solve_pulp(
-            budget=80000,
-            expected_benefit=False,
-            force_both_centers=True,
-        )
-
-        if forced_solution is None:
-            st.error(
-                "Bài toán không khả thi vì yêu cầu P1 = P2 = 1 "
-                "mâu thuẫn trực tiếp với ràng buộc y₁ + y₂ ≤ 1."
-            )
-
-            conflict_table = pd.DataFrame(
-                {
-                    "Ràng buộc": [
-                        "Loại trừ trung tâm dữ liệu",
-                        "Kịch bản bắt buộc",
-                    ],
-                    "Biểu thức": [
-                        "y₁ + y₂ ≤ 1",
-                        "y₁ = 1 và y₂ = 1",
-                    ],
-                    "Hệ quả": [
-                        "Chỉ được chọn tối đa một dự án",
-                        "Yêu cầu chọn đồng thời hai dự án",
-                    ],
-                }
-            )
-
-            st.dataframe(
-                conflict_table,
-                use_container_width=True,
-                hide_index=True,
-            )
-
-            st.info(
-                "Để mô hình khả thi, phải bỏ hoặc sửa ràng buộc loại trừ; "
-                "hoặc chia hai trung tâm thành hai giai đoạn đầu tư khác nhau."
-            )
-        else:
-            st.warning(
-                "Mô hình trả về nghiệm khả thi. Hãy kiểm tra lại ràng buộc loại trừ P1-P2."
-            )
-
-    # -----------------------------------------------------
-    # 5.4.4
-    # -----------------------------------------------------
-    with tab544:
-        st.markdown(
-            "### Câu 5.4.4. Tối ưu theo lợi ích kỳ vọng có xác suất hoàn thành"
-        )
-
-        expected_solution, _ = _b5_solve_pulp(
-            budget=80000,
-            expected_benefit=True,
-            force_both_centers=False,
-        )
-
-        if expected_solution is None:
-            st.error(
-                "Không tìm thấy danh mục khả thi cho mô hình lợi ích kỳ vọng."
-            )
-        else:
-            selected_expected = _b5_selected_table(
-                expected_solution,
-                df,
-            )
-
-            changed_decisions = int(
-                np.sum(
-                    base_solution["y"]
-                    != expected_solution["y"]
-                )
-            )
-
-            base_codes = set(
-                df.loc[
-                    base_solution["y"] == 1,
-                    "Mã",
-                ]
-            )
-
-            expected_codes = set(
-                df.loc[
-                    expected_solution["y"] == 1,
-                    "Mã",
-                ]
-            )
-
-            comparison_expected = pd.DataFrame(
-                {
-                    "Mô hình": [
-                        "NPV danh nghĩa",
-                        "NPV kỳ vọng",
-                    ],
-                    "Giá trị mục tiêu": [
-                        base_solution["objective"],
-                        expected_solution["objective"],
-                    ],
-                    "Tổng chi phí": [
-                        base_solution["cost"],
-                        expected_solution["cost"],
-                    ],
-                    "Số dự án": [
-                        int(
-                            base_solution["y"].sum()
-                        ),
-                        int(
-                            expected_solution["y"].sum()
-                        ),
-                    ],
-                }
-            )
-
-            kpi_cards(
-                [
-                    (
-                        "E[Z] tối ưu",
-                        f"{expected_solution['objective']:,.0f}",
-                        "NPV kỳ vọng",
-                    ),
-                    (
-                        "Tổng chi phí",
-                        f"{expected_solution['cost']:,.0f}",
-                        "tỷ VND",
-                    ),
-                    (
-                        "Số quyết định đổi",
-                        f"{changed_decisions}",
-                        "so với NPV danh nghĩa",
-                    ),
-                    (
-                        "Dự án mới",
-                        ", ".join(
-                            sorted(
-                                expected_codes
-                                - base_codes
-                            )
-                        )
-                        or "Không có",
-                        "do xét rủi ro",
-                    ),
-                ]
-            )
-
-            st.dataframe(
-                comparison_expected,
-                use_container_width=True,
-                hide_index=True,
-            )
-
-            st.dataframe(
-                selected_expected,
-                use_container_width=True,
-                hide_index=True,
-            )
-
-            fig_expected = px.bar(
-                selected_expected,
-                x="Mã",
-                y=[
-                    "NPV",
-                    "NPV kỳ vọng",
-                ],
-                barmode="group",
-                template=PLOT_TEMPLATE,
-                title="So sánh NPV danh nghĩa và NPV kỳ vọng",
-            )
-
-            fig_expected.update_layout(
-                height=470,
-                margin=dict(
-                    l=10,
-                    r=10,
-                    t=54,
-                    b=10,
-                ),
-            )
-
-            st.plotly_chart(
-                fig_expected,
-                use_container_width=True,
-            )
-
-    # =====================================================
-    # Tải kết quả
-    # =====================================================
-    export_df = _b5_selected_table(
-        base_solution,
-        df,
-    )
-
-    st.download_button(
-        "Tải danh mục tối ưu Bài 5",
-        data=export_df.to_csv(
-            index=False
-        ).encode(
-            "utf-8-sig"
-        ),
-        file_name="bai5_danh_muc_du_an.csv",
-        mime="text/csv",
-        key="download_bai5",
-    )
-
-    # =====================================================
-    # 5.5. Câu hỏi thảo luận chính sách
-    # =====================================================
-    st.markdown(
-        "## 5.5. Câu hỏi thảo luận chính sách"
-    )
-
-    with st.expander(
-        "a) Vì sao P15 có tỷ suất NPV/chi phí cao nhưng vẫn có thể không được chọn?",
-        expanded=True,
-    ):
-        st.markdown(
-            "MIP tối ưu toàn bộ danh mục dưới nhiều ràng buộc. Một dự án nhỏ có tỷ suất "
-            "cao vẫn có thể bị loại nếu không giúp thỏa điều kiện tiên quyết, giới hạn số "
-            "dự án hoặc ngân sách năm 1-2 tốt bằng một tổ hợp khác. Nếu Open Data có vai "
-            "trò nền tảng, nên thêm ràng buộc bắt buộc hoặc lợi ích cộng hưởng."
-        )
-
-    with st.expander(
-        "b) P14 bắt buộc có hợp lý không? Chi phí cơ hội là bao nhiêu?",
-        expanded=True,
-    ):
-        st.markdown(
-            "P14 có thể làm giảm tổng NPV vì chiếm ngân sách, nhưng an ninh mạng là điều "
-            "kiện hệ thống và không thể đánh đổi hoàn toàn bằng lợi ích tài chính. Chi phí "
-            "cơ hội có thể đo bằng chênh lệch Z* giữa mô hình có và không có ràng buộc y₁₄=1."
-        )
-
-    with st.expander(
-        "c) Mô hình hóa hiệu ứng cộng hưởng giữa P8 và P13 như thế nào?",
-        expanded=True,
-    ):
-        st.markdown(
-            "Thêm biến nhị phân z₈₋₁₃ với các ràng buộc: "
-            "`z ≤ y₈`, `z ≤ y₁₃`, `z ≥ y₈ + y₁₃ − 1`; "
-            "sau đó cộng thêm `synergy × z` vào hàm mục tiêu."
-        )
+    c1, c2 = st.columns([1.25, 1])
+    with c1:
+        st.dataframe(selected, use_container_width=True, hide_index=True)
+    with c2:
+        fig = px.bar(selected, x="Mã", y="NPV", color="Lĩnh vực", template=PLOT_TEMPLATE, title="Lợi ích NPV của dự án được chọn", hover_name="Tên dự án")
+        fig.update_layout(height=430, margin=dict(l=10, r=10, t=54, b=10))
+        st.plotly_chart(fig, use_container_width=True)
 
 
-def page_6():
-    hero(
-        "Bài 6 — TOPSIS xếp hạng 6 vùng",
-        "Đánh giá mức độ ưu tiên đầu tư AI theo GRDP/người, FDI, Digital Index, AI readiness, lao động đào tạo, R&D, Internet và Gini.",
-        ["TOPSIS", "Entropy weight", "MCDM"],
-    )
+def _b6_prepare_data():
+    """
+    Chuẩn bị dữ liệu, danh sách tiêu chí, loại tiêu chí
+    và bộ trọng số chuyên gia cho Bài 6.
+    """
     df = load_regions().copy()
+
     criteria = [
         "grdp_per_capita_million_VND",
         "fdi_registered_billion_USD",
@@ -4086,120 +3178,2017 @@ def page_6():
         "internet_penetration_pct",
         "gini_coef",
     ]
-    is_benefit = [True, True, True, True, True, True, True, False]
-    expert_w = np.array([0.10, 0.10, 0.15, 0.20, 0.15, 0.15, 0.05, 0.10])
-    df["TOPSIS_expert"] = topsis_score(df, criteria, expert_w, is_benefit)
 
-    X_entropy = df[criteria].copy()
-    X_entropy["gini_coef"] = reverse_minmax(X_entropy["gini_coef"])
-    for c in criteria[:-1]:
-        X_entropy[c] = minmax(X_entropy[c])
-    ew = entropy_weights_positive(X_entropy.values)
-    df["TOPSIS_entropy"] = topsis_score(df, criteria, ew, is_benefit)
+    # 7 tiêu chí lợi ích và 1 tiêu chí chi phí
+    is_benefit = [
+        True,
+        True,
+        True,
+        True,
+        True,
+        True,
+        True,
+        False,
+    ]
 
-    result = df[["region_name_vi", "TOPSIS_expert", "TOPSIS_entropy", "digital_index_0_100", "ai_readiness_0_100"]].sort_values("TOPSIS_expert", ascending=False)
-    result["Rank expert"] = np.arange(1, len(result) + 1)
-
-    kpi_cards(
+    expert_weights = np.array(
         [
-            ("Dẫn đầu expert", result.iloc[0]["region_name_vi"], f"C*={result.iloc[0]['TOPSIS_expert']:.3f}"),
-            ("Dẫn đầu entropy", df.sort_values("TOPSIS_entropy", ascending=False).iloc[0]["region_name_vi"], "trọng số khách quan"),
-            ("AI readiness cao nhất", df.loc[df["ai_readiness_0_100"].idxmax(), "region_name_vi"], "theo vùng"),
-            ("Digital Index cao nhất", df.loc[df["digital_index_0_100"].idxmax(), "region_name_vi"], "theo vùng"),
+            0.10,  # GRDP/người
+            0.10,  # FDI
+            0.15,  # Digital Index
+            0.20,  # AI readiness
+            0.15,  # Lao động qua đào tạo
+            0.15,  # R&D intensity
+            0.05,  # Internet
+            0.10,  # Gini
+        ],
+        dtype=float,
+    )
+
+    return df, criteria, is_benefit, expert_weights
+
+
+def _b6_entropy_weights(df, criteria):
+    """
+    Tính trọng số Entropy sau khi chuyển tiêu chí Gini
+    về hướng càng lớn càng tốt.
+    """
+    X = df[criteria].astype(float).copy()
+
+    for col in criteria[:-1]:
+        X[col] = minmax(X[col])
+
+    # Gini là tiêu chí chi phí
+    X[criteria[-1]] = reverse_minmax(X[criteria[-1]])
+
+    return entropy_weights_positive(
+        X.to_numpy(dtype=float)
+    )
+
+
+def _b6_rank_result(df, score, score_name):
+    """
+    Tạo bảng xếp hạng TOPSIS.
+    """
+    result = pd.DataFrame(
+        {
+            "Vùng": df["region_name_vi"],
+            score_name: score,
+        }
+    ).sort_values(
+        score_name,
+        ascending=False,
+    )
+
+    result["Xếp hạng"] = np.arange(
+        1,
+        len(result) + 1,
+    )
+
+    return result
+
+
+def page_6():
+    hero(
+        "Bài 6 — TOPSIS xếp hạng 6 vùng kinh tế theo ưu tiên đầu tư AI",
+        "Trình bày đầy đủ các mục 6.1-6.5: lý thuyết TOPSIS, trọng số chuyên gia, Entropy, độ nhạy AI readiness và AHP.",
+        ["6.1-6.5", "TOPSIS", "Entropy", "AHP", "Regional AI"],
+    )
+
+    df, criteria, is_benefit, expert_weights = _b6_prepare_data()
+
+    criterion_labels = {
+        "grdp_per_capita_million_VND": "GRDP/người",
+        "fdi_registered_billion_USD": "FDI đăng ký",
+        "digital_index_0_100": "Digital Index",
+        "ai_readiness_0_100": "AI Readiness",
+        "trained_labor_pct": "Lao động qua đào tạo",
+        "rd_intensity_pct": "R&D/GDP",
+        "internet_penetration_pct": "Internet",
+        "gini_coef": "Gini",
+    }
+
+    # =====================================================
+    # 6.1. Bối cảnh Việt Nam
+    # =====================================================
+    st.markdown("## 6.1. Bối cảnh Việt Nam")
+
+    st.markdown(
+        """
+        Việt Nam đặt mục tiêu phát triển các trung tâm nghiên cứu, đào tạo và ứng dụng AI,
+        nhưng nguồn lực công có giới hạn. Sáu vùng kinh tế - xã hội có mức độ phát triển,
+        hạ tầng số, nhân lực và năng lực đổi mới sáng tạo khác nhau.
+
+        Bài 6 sử dụng **TOPSIS** để xếp hạng mức độ ưu tiên đầu tư AI cho từng vùng.
+        Phương án tốt là vùng có khoảng cách gần nhất với nghiệm lý tưởng tích cực
+        và xa nhất với nghiệm lý tưởng tiêu cực.
+        """
+    )
+
+    # =====================================================
+    # 6.2. Lý thuyết TOPSIS
+    # =====================================================
+    st.markdown("## 6.2. Lý thuyết TOPSIS")
+
+    st.markdown("### Bước 1. Chuẩn hóa vector")
+    st.latex(
+        r"r_{ij}="
+        r"\frac{x_{ij}}"
+        r"{\sqrt{\sum_{i=1}^{m}x_{ij}^{2}}}"
+    )
+
+    st.markdown("### Bước 2. Ma trận chuẩn hóa có trọng số")
+    st.latex(
+        r"v_{ij}=w_jr_{ij}"
+    )
+
+    st.markdown("### Bước 3. Nghiệm lý tưởng")
+    st.latex(
+        r"A^*=\{v_1^*,v_2^*,...,v_n^*\},"
+        r"\quad"
+        r"A^-=\{v_1^-,v_2^-,...,v_n^-\}"
+    )
+
+    st.markdown("### Bước 4. Khoảng cách đến nghiệm lý tưởng")
+    st.latex(
+        r"S_i^*="
+        r"\sqrt{\sum_j(v_{ij}-v_j^*)^2}"
+    )
+
+    st.latex(
+        r"S_i^-="
+        r"\sqrt{\sum_j(v_{ij}-v_j^-)^2}"
+    )
+
+    st.markdown("### Bước 5. Hệ số gần lý tưởng")
+    st.latex(
+        r"C_i^*="
+        r"\frac{S_i^-}"
+        r"{S_i^*+S_i^-}"
+    )
+
+    st.info(
+        "Vùng có C* càng lớn thì càng gần phương án lý tưởng và được xếp hạng ưu tiên cao hơn."
+    )
+
+    # =====================================================
+    # 6.3. Dữ liệu 6 vùng
+    # =====================================================
+    st.markdown("## 6.3. Dữ liệu 6 vùng kinh tế - xã hội")
+
+    data_display = df[
+        ["region_name_vi"] + criteria
+    ].rename(
+        columns={
+            "region_name_vi": "Vùng",
+            **criterion_labels,
+        }
+    )
+
+    st.dataframe(
+        data_display,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    criteria_table = pd.DataFrame(
+        {
+            "Tiêu chí": [
+                criterion_labels[col]
+                for col in criteria
+            ],
+            "Loại tiêu chí": [
+                "Lợi ích" if flag else "Chi phí"
+                for flag in is_benefit
+            ],
+            "Trọng số chuyên gia": expert_weights,
+        }
+    )
+
+    st.markdown("### Bộ trọng số chuyên gia")
+
+    st.dataframe(
+        criteria_table.style.format(
+            {"Trọng số chuyên gia": "{:.2f}"}
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # Kết quả dùng chung
+    expert_score = topsis_score(
+        df,
+        criteria,
+        expert_weights,
+        is_benefit,
+    )
+
+    entropy_weights = _b6_entropy_weights(
+        df,
+        criteria,
+    )
+
+    entropy_score = topsis_score(
+        df,
+        criteria,
+        entropy_weights,
+        is_benefit,
+    )
+
+    expert_result = _b6_rank_result(
+        df,
+        expert_score,
+        "TOPSIS chuyên gia",
+    )
+
+    entropy_result = _b6_rank_result(
+        df,
+        entropy_score,
+        "TOPSIS Entropy",
+    )
+
+    # =====================================================
+    # 6.4. Yêu cầu lập trình
+    # =====================================================
+    st.markdown("## 6.4. Yêu cầu lập trình")
+
+    tab641, tab642, tab643, tab644 = st.tabs(
+        [
+            "6.4.1 - TOPSIS expert",
+            "6.4.2 - Entropy",
+            "6.4.3 - Độ nhạy AI",
+            "6.4.4 - AHP",
         ]
     )
-    c1, c2 = st.columns([1, 1])
-    with c1:
-        st.dataframe(result, use_container_width=True, hide_index=True)
-    with c2:
-        fig = px.bar(result, x="region_name_vi", y=["TOPSIS_expert", "TOPSIS_entropy"], barmode="group", template=PLOT_TEMPLATE, title="So sánh TOPSIS expert vs entropy")
-        fig.update_layout(height=430, margin=dict(l=10, r=10, t=54, b=10))
-        st.plotly_chart(fig, use_container_width=True)
+
+    # -----------------------------------------------------
+    # 6.4.1
+    # -----------------------------------------------------
+    with tab641:
+        st.markdown(
+            "### Câu 6.4.1. Xếp hạng TOPSIS với trọng số chuyên gia"
+        )
+
+        kpi_cards(
+            [
+                (
+                    "Vùng dẫn đầu",
+                    expert_result.iloc[0]["Vùng"],
+                    f"C* = {expert_result.iloc[0]['TOPSIS chuyên gia']:.3f}",
+                ),
+                (
+                    "Vùng thứ hai",
+                    expert_result.iloc[1]["Vùng"],
+                    f"C* = {expert_result.iloc[1]['TOPSIS chuyên gia']:.3f}",
+                ),
+                (
+                    "Vùng thứ ba",
+                    expert_result.iloc[2]["Vùng"],
+                    f"C* = {expert_result.iloc[2]['TOPSIS chuyên gia']:.3f}",
+                ),
+                (
+                    "Số tiêu chí",
+                    "8",
+                    "7 lợi ích, 1 chi phí",
+                ),
+            ]
+        )
+
+        c1, c2 = st.columns([1, 1])
+
+        with c1:
+            st.dataframe(
+                expert_result.style.format(
+                    {"TOPSIS chuyên gia": "{:.4f}"}
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        with c2:
+            st.plotly_chart(
+                plot_bar(
+                    expert_result,
+                    "Vùng",
+                    "TOPSIS chuyên gia",
+                    "TOPSIS với trọng số chuyên gia",
+                    text="TOPSIS chuyên gia",
+                ),
+                use_container_width=True,
+            )
+
+        with st.expander("Xem mã Python cho câu 6.4.1"):
+            st.code(
+                """score = topsis_score(
+    df,
+    criteria,
+    expert_weights,
+    is_benefit
+)
+
+result = pd.DataFrame({
+    "region": df["region_name_vi"],
+    "C_star": score
+}).sort_values(
+    "C_star",
+    ascending=False
+)""",
+                language="python",
+            )
+
+    # -----------------------------------------------------
+    # 6.4.2
+    # -----------------------------------------------------
+    with tab642:
+        st.markdown(
+            "### Câu 6.4.2. Tính trọng số Entropy và chạy lại TOPSIS"
+        )
+
+        weight_compare = pd.DataFrame(
+            {
+                "Tiêu chí": [
+                    criterion_labels[col]
+                    for col in criteria
+                ],
+                "Trọng số chuyên gia": expert_weights,
+                "Trọng số Entropy": entropy_weights,
+            }
+        )
+
+        rank_compare = pd.DataFrame(
+            {
+                "Vùng": df["region_name_vi"],
+                "TOPSIS chuyên gia": expert_score,
+                "TOPSIS Entropy": entropy_score,
+            }
+        )
+
+        rank_compare["Hạng chuyên gia"] = (
+            rank_compare["TOPSIS chuyên gia"]
+            .rank(
+                ascending=False,
+                method="min",
+            )
+            .astype(int)
+        )
+
+        rank_compare["Hạng Entropy"] = (
+            rank_compare["TOPSIS Entropy"]
+            .rank(
+                ascending=False,
+                method="min",
+            )
+            .astype(int)
+        )
+
+        rank_compare["Thay đổi hạng"] = (
+            rank_compare["Hạng chuyên gia"]
+            - rank_compare["Hạng Entropy"]
+        )
+
+        c1, c2 = st.columns([0.9, 1.1])
+
+        with c1:
+            st.markdown("#### So sánh trọng số")
+
+            st.dataframe(
+                weight_compare.style.format(
+                    {
+                        "Trọng số chuyên gia": "{:.4f}",
+                        "Trọng số Entropy": "{:.4f}",
+                    }
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        with c2:
+            st.markdown("#### So sánh thứ hạng")
+
+            st.dataframe(
+                rank_compare.sort_values(
+                    "Hạng chuyên gia"
+                ).style.format(
+                    {
+                        "TOPSIS chuyên gia": "{:.4f}",
+                        "TOPSIS Entropy": "{:.4f}",
+                    }
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        compare_long = rank_compare.melt(
+            id_vars="Vùng",
+            value_vars=[
+                "TOPSIS chuyên gia",
+                "TOPSIS Entropy",
+            ],
+            var_name="Phương pháp",
+            value_name="Điểm",
+        )
+
+        fig_compare = px.bar(
+            compare_long,
+            x="Vùng",
+            y="Điểm",
+            color="Phương pháp",
+            barmode="group",
+            template=PLOT_TEMPLATE,
+            title="So sánh TOPSIS chuyên gia và Entropy",
+        )
+
+        fig_compare.update_layout(
+            height=480,
+            margin=dict(
+                l=10,
+                r=10,
+                t=54,
+                b=10,
+            ),
+        )
+
+        st.plotly_chart(
+            fig_compare,
+            use_container_width=True,
+        )
+
+        changed_regions = rank_compare.loc[
+            rank_compare["Thay đổi hạng"] != 0,
+            "Vùng",
+        ].tolist()
+
+        st.info(
+            "Các vùng thay đổi thứ hạng khi dùng Entropy: "
+            + (
+                ", ".join(changed_regions)
+                if changed_regions
+                else "không có"
+            )
+            + "."
+        )
+
+        with st.expander("Xem mã Python cho câu 6.4.2"):
+            st.code(
+                """entropy_w = entropy_weights_positive(
+    normalized_matrix
+)
+
+entropy_score = topsis_score(
+    df,
+    criteria,
+    entropy_w,
+    is_benefit
+)""",
+                language="python",
+            )
+
+    # -----------------------------------------------------
+    # 6.4.3
+    # -----------------------------------------------------
+    with tab643:
+        st.markdown(
+            "### Câu 6.4.3. Độ nhạy khi trọng số AI readiness thay đổi"
+        )
+
+        sensitivity_rows = []
+
+        ai_weight_values = np.arange(
+            0.10,
+            0.401,
+            0.05,
+        )
+
+        for ai_weight in ai_weight_values:
+            new_weights = expert_weights.copy()
+
+            remaining_weight = 1 - ai_weight
+
+            other_mask = np.ones(
+                len(new_weights),
+                dtype=bool,
+            )
+
+            # AI readiness là tiêu chí thứ 4, index = 3
+            other_mask[3] = False
+
+            new_weights[other_mask] = (
+                new_weights[other_mask]
+                / new_weights[other_mask].sum()
+                * remaining_weight
+            )
+
+            new_weights[3] = ai_weight
+
+            score = topsis_score(
+                df,
+                criteria,
+                new_weights,
+                is_benefit,
+            )
+
+            temp = pd.DataFrame(
+                {
+                    "Vùng": df["region_name_vi"],
+                    "Điểm": score,
+                }
+            )
+
+            temp["Hạng"] = (
+                temp["Điểm"]
+                .rank(
+                    ascending=False,
+                    method="min",
+                )
+                .astype(int)
+            )
+
+            for _, row in temp.iterrows():
+                sensitivity_rows.append(
+                    [
+                        ai_weight,
+                        row["Vùng"],
+                        row["Điểm"],
+                        row["Hạng"],
+                    ]
+                )
+
+        sensitivity_df = pd.DataFrame(
+            sensitivity_rows,
+            columns=[
+                "Trọng số AI",
+                "Vùng",
+                "Điểm",
+                "Hạng",
+            ],
+        )
+
+        fig_line = px.line(
+            sensitivity_df,
+            x="Trọng số AI",
+            y="Hạng",
+            color="Vùng",
+            markers=True,
+            template=PLOT_TEMPLATE,
+            title="Độ nhạy thứ hạng theo trọng số AI readiness",
+        )
+
+        fig_line.update_yaxes(
+            autorange="reversed"
+        )
+
+        fig_line.update_layout(
+            height=540,
+            margin=dict(
+                l=10,
+                r=10,
+                t=54,
+                b=10,
+            ),
+        )
+
+        st.plotly_chart(
+            fig_line,
+            use_container_width=True,
+        )
+
+        rank_heatmap = sensitivity_df.pivot(
+            index="Vùng",
+            columns="Trọng số AI",
+            values="Hạng",
+        )
+
+        fig_heatmap = px.imshow(
+            rank_heatmap,
+            text_auto=".0f",
+            aspect="auto",
+            color_continuous_scale="RdYlGn_r",
+            template=PLOT_TEMPLATE,
+            title="Heatmap thứ hạng theo trọng số AI",
+        )
+
+        fig_heatmap.update_layout(
+            height=500,
+            margin=dict(
+                l=10,
+                r=10,
+                t=54,
+                b=10,
+            ),
+        )
+
+        st.plotly_chart(
+            fig_heatmap,
+            use_container_width=True,
+        )
+
+        first_place_count = (
+            sensitivity_df[
+                sensitivity_df["Hạng"] == 1
+            ]["Vùng"]
+            .value_counts()
+            .reset_index()
+        )
+
+        first_place_count.columns = [
+            "Vùng",
+            "Số lần đứng đầu",
+        ]
+
+        st.markdown(
+            "#### Mức ổn định của vị trí dẫn đầu"
+        )
+
+        st.dataframe(
+            first_place_count,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    # -----------------------------------------------------
+    # 6.4.4
+    # -----------------------------------------------------
+    with tab644:
+        st.markdown(
+            "### Câu 6.4.4. Dùng AHP để xác định trọng số rồi chạy TOPSIS"
+        )
+
+        # Tạo ma trận so sánh cặp nhất quán từ vector trọng số chuyên gia.
+        # A_ij = w_i / w_j
+        pairwise_matrix = (
+            expert_weights[:, None]
+            / expert_weights[None, :]
+        )
+
+        eigenvalues, eigenvectors = np.linalg.eig(
+            pairwise_matrix
+        )
+
+        principal_index = int(
+            np.argmax(
+                eigenvalues.real
+            )
+        )
+
+        ahp_weights = np.abs(
+            eigenvectors[
+                :,
+                principal_index,
+            ].real
+        )
+
+        ahp_weights = (
+            ahp_weights
+            / ahp_weights.sum()
+        )
+
+        lambda_max = float(
+            eigenvalues[
+                principal_index
+            ].real
+        )
+
+        n = len(expert_weights)
+
+        consistency_index = (
+            (lambda_max - n)
+            / (n - 1)
+        )
+
+        # Random Index cho n=8
+        random_index = 1.41
+
+        consistency_ratio = (
+            consistency_index
+            / random_index
+            if random_index != 0
+            else 0
+        )
+
+        ahp_score = topsis_score(
+            df,
+            criteria,
+            ahp_weights,
+            is_benefit,
+        )
+
+        ahp_result = _b6_rank_result(
+            df,
+            ahp_score,
+            "TOPSIS-AHP",
+        )
+
+        ahp_weight_table = pd.DataFrame(
+            {
+                "Tiêu chí": [
+                    criterion_labels[col]
+                    for col in criteria
+                ],
+                "Trọng số AHP": ahp_weights,
+            }
+        )
+
+        kpi_cards(
+            [
+                (
+                    "λmax",
+                    f"{lambda_max:.4f}",
+                    "giá trị riêng lớn nhất",
+                ),
+                (
+                    "CI",
+                    f"{consistency_index:.4f}",
+                    "Consistency Index",
+                ),
+                (
+                    "CR",
+                    f"{consistency_ratio:.4f}",
+                    "CR < 0,10 là phù hợp",
+                ),
+                (
+                    "Vùng dẫn đầu",
+                    ahp_result.iloc[0]["Vùng"],
+                    f"C* = {ahp_result.iloc[0]['TOPSIS-AHP']:.3f}",
+                ),
+            ]
+        )
+
+        c1, c2 = st.columns([0.8, 1.2])
+
+        with c1:
+            st.dataframe(
+                ahp_weight_table.style.format(
+                    {"Trọng số AHP": "{:.4f}"}
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        with c2:
+            st.dataframe(
+                ahp_result.style.format(
+                    {"TOPSIS-AHP": "{:.4f}"}
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        pairwise_df = pd.DataFrame(
+            pairwise_matrix,
+            index=[
+                criterion_labels[col]
+                for col in criteria
+            ],
+            columns=[
+                criterion_labels[col]
+                for col in criteria
+            ],
+        )
+
+        with st.expander(
+            "Xem ma trận so sánh cặp AHP"
+        ):
+            st.dataframe(
+                pairwise_df.style.format(
+                    "{:.3f}"
+                ),
+                use_container_width=True,
+            )
+
+        st.info(
+            "Ma trận AHP trong dashboard được tạo từ bộ trọng số chuyên gia nên nhất quán hoàn toàn. "
+            "Khi khảo sát chuyên gia thực tế, cần nhập trực tiếp đánh giá cặp theo thang Saaty 1-9."
+        )
+
+    # =====================================================
+    # Tải kết quả
+    # =====================================================
+    export_result = pd.DataFrame(
+        {
+            "Vùng": df["region_name_vi"],
+            "TOPSIS chuyên gia": expert_score,
+            "TOPSIS Entropy": entropy_score,
+        }
+    )
+
+    export_result["Hạng chuyên gia"] = (
+        export_result[
+            "TOPSIS chuyên gia"
+        ]
+        .rank(
+            ascending=False,
+            method="min",
+        )
+        .astype(int)
+    )
+
+    export_result["Hạng Entropy"] = (
+        export_result[
+            "TOPSIS Entropy"
+        ]
+        .rank(
+            ascending=False,
+            method="min",
+        )
+        .astype(int)
+    )
+
+    st.download_button(
+        "Tải kết quả Bài 6 dạng CSV",
+        data=export_result.to_csv(
+            index=False
+        ).encode(
+            "utf-8-sig"
+        ),
+        file_name="bai6_topsis_6_vung.csv",
+        mime="text/csv",
+        key="download_bai6",
+    )
+
+    # =====================================================
+    # 6.5. Câu hỏi thảo luận chính sách
+    # =====================================================
+    st.markdown("## 6.5. Câu hỏi thảo luận chính sách")
+
+    top_three = expert_result.head(3)["Vùng"].tolist()
+
+    with st.expander(
+        "a) Vùng nào dẫn đầu? Có nên đặt trung tâm AI quốc gia đầu tiên tại đó không?",
+        expanded=True,
+    ):
+        st.markdown(
+            f"Vùng dẫn đầu theo bộ trọng số chuyên gia là "
+            f"**{expert_result.iloc[0]['Vùng']}**. "
+            "Đây là ứng viên mạnh về kinh tế, hạ tầng số và năng lực AI. "
+            "Tuy nhiên, quyết định cuối cùng còn phải xét đất đai, năng lượng, "
+            "an ninh dữ liệu, liên kết đại học-doanh nghiệp và cân bằng vùng."
+        )
+
+    with st.expander(
+        "b) Vì sao trọng số Entropy có thể làm thay đổi thứ hạng?",
+        expanded=True,
+    ):
+        st.markdown(
+            "Entropy trao trọng số lớn hơn cho tiêu chí có mức độ phân hóa dữ liệu cao. "
+            "Do đó, vùng nổi bật ở các tiêu chí biến thiên mạnh có thể tăng hạng, "
+            "dù chuyên gia không gán trọng số cao nhất cho tiêu chí đó."
+        )
+
+    with st.expander(
+        "c) Tương quan cao giữa AI readiness và Internet ảnh hưởng thế nào?",
+        expanded=True,
+    ):
+        st.markdown(
+            "Tương quan cao có thể gây đếm trùng thông tin, làm một nhóm năng lực số "
+            "được phản ánh nhiều lần. Có thể xử lý bằng PCA, loại bớt một tiêu chí, "
+            "điều chỉnh trọng số theo tương quan hoặc sử dụng phương pháp CRITIC."
+        )
+
+    with st.expander(
+        "d) Nếu xây dựng ba trung tâm AI quốc gia, nên chọn ba vùng nào?",
+        expanded=True,
+    ):
+        st.markdown(
+            f"Theo kết quả TOPSIS chuyên gia, ba vùng dẫn đầu là "
+            f"**{', '.join(top_three)}**. "
+            "Khi triển khai thực tế nên bổ sung các tiêu chí về năng lượng, "
+            "an ninh, khả năng kết nối nghiên cứu và tác động lan tỏa sang vùng yếu hơn."
+        )
 
 
-def pareto_front(points):
-    n = len(points)
+def _b7_non_dominated_mask(cost_matrix):
+    """
+    Trả về mask của các nghiệm không bị trội.
+
+    cost_matrix phải được đưa về dạng tất cả mục tiêu đều là MIN.
+    Ví dụ Growth là mục tiêu MAX nên sử dụng -Growth.
+    """
+    cost_matrix = np.asarray(cost_matrix, dtype=float)
+    n = len(cost_matrix)
     is_pareto = np.ones(n, dtype=bool)
+
     for i in range(n):
         if not is_pareto[i]:
             continue
-        dominates_i = np.all(points <= points[i], axis=1) & np.any(points < points[i], axis=1)
-        if np.any(dominates_i):
+
+        dominated_by_other = np.any(
+            np.all(
+                cost_matrix <= cost_matrix[i],
+                axis=1,
+            )
+            & np.any(
+                cost_matrix < cost_matrix[i],
+                axis=1,
+            )
+        )
+
+        if dominated_by_other:
             is_pareto[i] = False
+
     return is_pareto
 
 
-@st.cache_data
-def sample_pareto(n_samples=1800, seed=42):
-    rng = np.random.default_rng(seed)
+def _b7_parameters():
+    """
+    Tham số cho bốn mục tiêu của Bài 7.
+    """
     regions, items, beta, D0 = region_beta_matrix()
-    e = np.array([0.42, 0.55, 0.48, 0.32, 0.62, 0.38])
-    rho = np.array([0.18, 0.45, 0.28, 0.12, 0.52, 0.22])
-    sig = np.array([0.32, 0.28, 0.30, 0.35, 0.25, 0.30])
 
-    rows, matrices = [], []
+    emission_coef = np.array(
+        [0.42, 0.55, 0.48, 0.32, 0.62, 0.38],
+        dtype=float,
+    )
+
+    data_risk_coef = np.array(
+        [0.18, 0.45, 0.28, 0.12, 0.52, 0.22],
+        dtype=float,
+    )
+
+    human_protection_coef = np.array(
+        [0.32, 0.28, 0.30, 0.35, 0.25, 0.30],
+        dtype=float,
+    )
+
+    return (
+        regions,
+        items,
+        beta,
+        D0,
+        emission_coef,
+        data_risk_coef,
+        human_protection_coef,
+    )
+
+
+def _b7_objectives(
+    X,
+    beta,
+    emission_coef,
+    data_risk_coef,
+    human_protection_coef,
+):
+    """
+    Tính bốn mục tiêu:
+    1. Growth: tối đa hóa
+    2. Inequality: tối thiểu hóa
+    3. Emission: tối thiểu hóa
+    4. DataRisk: tối thiểu hóa
+    """
+    region_budget = X.sum(axis=1)
+
+    growth = float(
+        np.sum(
+            beta * X
+        )
+    )
+
+    inequality = float(
+        np.mean(
+            np.abs(
+                region_budget
+                - region_budget.mean()
+            )
+        )
+    )
+
+    emission = float(
+        np.sum(
+            emission_coef
+            * (
+                X[:, 0]
+                + X[:, 2]
+            )
+        )
+    )
+
+    data_risk = float(
+        np.sum(
+            data_risk_coef
+            * X[:, 2]
+        )
+        - np.sum(
+            human_protection_coef
+            * X[:, 3]
+        )
+    )
+
+    return (
+        growth,
+        inequality,
+        emission,
+        data_risk,
+    )
+
+
+@st.cache_data
+def _b7_sample_pareto(
+    n_samples=2200,
+    seed=42,
+    fairness_lambda=0.68,
+):
+    """
+    Tạo tập nghiệm khả thi bằng lấy mẫu ngẫu nhiên có kiểm soát,
+    sau đó lọc nghiệm không bị trội.
+
+    Lý do dùng lambda=0.68:
+    Với D0 hiện tại, gamma=0.002 và trần 12.000/vùng,
+    lambda=0.70 làm Tây Nguyên không thể đạt ngưỡng công bằng.
+    Dashboard dùng 0.68 để tập nghiệm khả thi tồn tại.
+    """
+    rng = np.random.default_rng(seed)
+
+    (
+        regions,
+        items,
+        beta,
+        D0,
+        emission_coef,
+        data_risk_coef,
+        human_protection_coef,
+    ) = _b7_parameters()
+
+    accepted_rows = []
+    accepted_matrices = []
+
     attempts = 0
-    while len(rows) < n_samples and attempts < n_samples * 80:
+    max_attempts = n_samples * 250
+
+    while (
+        len(accepted_rows) < n_samples
+        and attempts < max_attempts
+    ):
         attempts += 1
-        region_budget = rng.dirichlet(np.ones(6)) * 50000
-        if np.any(region_budget < 5000) or np.any(region_budget > 12000):
+
+        # Tổng ngân sách 50.000; mỗi vùng 5.000-12.000
+        region_budget = (
+            rng.dirichlet(
+                np.ones(6)
+            )
+            * 50000
+        )
+
+        if np.any(
+            region_budget < 5000
+        ):
             continue
-        X = np.vstack([rng.dirichlet(np.ones(4)) * b for b in region_budget])
+
+        if np.any(
+            region_budget > 12000
+        ):
+            continue
+
+        # Phân bổ bốn hạng mục trong từng vùng
+        X = np.vstack(
+            [
+                rng.dirichlet(
+                    np.array(
+                        [1.2, 1.4, 1.0, 1.5]
+                    )
+                )
+                * budget
+                for budget in region_budget
+            ]
+        )
+
+        # Tổng đầu tư nhân lực số >= 12.000
         if X[:, 3].sum() < 12000:
             continue
-        growth = (beta * X).sum()
-        ineq = np.abs(region_budget - region_budget.mean()).mean()
-        emission = (e * (X[:, 0] + X[:, 2])).sum()
-        risk = (rho * X[:, 2]).sum() - (sig * X[:, 3]).sum()
-        rows.append([growth, ineq, emission, risk])
-        matrices.append(X)
-    F = np.array(rows)
-    costs = np.column_stack([-F[:, 0], F[:, 1], F[:, 2], F[:, 3]])
-    mask = pareto_front(costs)
-    pareto = pd.DataFrame(F[mask], columns=["Growth", "Inequality", "Emission", "DataRisk"])
-    mats = [matrices[i] for i, ok in enumerate(mask) if ok]
-    for col in ["Growth", "Inequality", "Emission", "DataRisk"]:
-        pareto[col + "_norm"] = minmax(pareto[col])
-    pareto["CompromiseScore"] = (
-        0.40 * pareto["Growth_norm"]
-        + 0.25 * (1 - pareto["Inequality_norm"])
-        + 0.20 * (1 - pareto["Emission_norm"])
-        + 0.15 * (1 - pareto["DataRisk_norm"])
+
+        # Ràng buộc công bằng Digital Index
+        digital_after = (
+            D0
+            + 0.002 * X[:, 1]
+        )
+
+        fairness_ratio = float(
+            digital_after.min()
+            / max(
+                digital_after.max(),
+                1e-12,
+            )
+        )
+
+        if fairness_ratio < fairness_lambda:
+            continue
+
+        (
+            growth,
+            inequality,
+            emission,
+            data_risk,
+        ) = _b7_objectives(
+            X,
+            beta,
+            emission_coef,
+            data_risk_coef,
+            human_protection_coef,
+        )
+
+        accepted_rows.append(
+            [
+                growth,
+                inequality,
+                emission,
+                data_risk,
+                fairness_ratio,
+            ]
+        )
+
+        accepted_matrices.append(
+            X
+        )
+
+    if not accepted_rows:
+        empty = pd.DataFrame(
+            columns=[
+                "Growth",
+                "Inequality",
+                "Emission",
+                "DataRisk",
+                "FairnessRatio",
+            ]
+        )
+        return empty, []
+
+    objective_df = pd.DataFrame(
+        accepted_rows,
+        columns=[
+            "Growth",
+            "Inequality",
+            "Emission",
+            "DataRisk",
+            "FairnessRatio",
+        ],
     )
-    return pareto, mats
+
+    # Chuyển tất cả mục tiêu về dạng MIN để lọc Pareto
+    cost_matrix = np.column_stack(
+        [
+            -objective_df["Growth"],
+            objective_df["Inequality"],
+            objective_df["Emission"],
+            objective_df["DataRisk"],
+        ]
+    )
+
+    pareto_mask = _b7_non_dominated_mask(
+        cost_matrix
+    )
+
+    pareto_df = (
+        objective_df.loc[
+            pareto_mask
+        ]
+        .reset_index(
+            drop=True
+        )
+    )
+
+    pareto_matrices = [
+        accepted_matrices[i]
+        for i, is_pareto
+        in enumerate(pareto_mask)
+        if is_pareto
+    ]
+
+    # Chuẩn hóa để chọn nghiệm thỏa hiệp
+    pareto_df[
+        "Growth_norm"
+    ] = minmax(
+        pareto_df["Growth"]
+    )
+
+    pareto_df[
+        "Inequality_norm"
+    ] = minmax(
+        pareto_df["Inequality"]
+    )
+
+    pareto_df[
+        "Emission_norm"
+    ] = minmax(
+        pareto_df["Emission"]
+    )
+
+    pareto_df[
+        "DataRisk_norm"
+    ] = minmax(
+        pareto_df["DataRisk"]
+    )
+
+    return (
+        pareto_df,
+        pareto_matrices,
+    )
+
+
+def _b7_compromise_score(
+    pareto_df,
+    weights,
+):
+    """
+    Tính điểm thỏa hiệp:
+    Growth càng cao càng tốt;
+    ba mục tiêu còn lại càng thấp càng tốt.
+    """
+    weights = np.asarray(
+        weights,
+        dtype=float,
+    )
+
+    weights = (
+        weights
+        / max(
+            weights.sum(),
+            1e-12,
+        )
+    )
+
+    return (
+        weights[0]
+        * pareto_df[
+            "Growth_norm"
+        ]
+        + weights[1]
+        * (
+            1
+            - pareto_df[
+                "Inequality_norm"
+            ]
+        )
+        + weights[2]
+        * (
+            1
+            - pareto_df[
+                "Emission_norm"
+            ]
+        )
+        + weights[3]
+        * (
+            1
+            - pareto_df[
+                "DataRisk_norm"
+            ]
+        )
+    )
 
 
 def page_7():
     hero(
-        "Bài 7 — Tối ưu đa mục tiêu Pareto",
-        "Dashboard minh họa tập nghiệm Pareto cho 4 mục tiêu: tăng trưởng, bao trùm, phát thải và rủi ro dữ liệu. Bản nộp code có thể thay phần lấy mẫu này bằng pymoo/NSGA-II.",
-        ["Pareto", "Multi-objective", "Compromise solution"],
+        "Bài 7 — Tối ưu đa mục tiêu Pareto với khung NSGA-II",
+        "Trình bày đầy đủ các mục 7.1-7.5: tăng trưởng, bao trùm, phát thải, rủi ro dữ liệu, tập Pareto, nghiệm thỏa hiệp và chi phí cơ hội.",
+        ["7.1-7.5", "Pareto", "NSGA-II", "4 objectives", "Compromise solution"],
     )
-    n_samples = st.slider("Số nghiệm mô phỏng", 600, 3000, 1800, 300)
-    pareto, mats = sample_pareto(n_samples=n_samples)
-    best_idx = pareto["CompromiseScore"].idxmax()
-    best = pareto.loc[best_idx]
 
-    kpi_cards(
+    (
+        regions,
+        items,
+        beta,
+        D0,
+        emission_coef,
+        data_risk_coef,
+        human_protection_coef,
+    ) = _b7_parameters()
+
+    # =====================================================
+    # 7.1. Bối cảnh Việt Nam
+    # =====================================================
+    st.markdown(
+        "## 7.1. Bối cảnh Việt Nam"
+    )
+
+    st.markdown(
+        """
+        Chính sách kinh tế số không chỉ tối đa hóa tăng trưởng. Nhà hoạch định còn phải
+        cân bằng giữa **bao trùm vùng miền**, **phát thải** và **an ninh dữ liệu**.
+
+        Các mục tiêu này xung đột với nhau nên không tồn tại một nghiệm tối ưu tuyệt đối.
+        Thay vào đó, mô hình tạo ra **tập nghiệm Pareto**: không thể cải thiện một mục tiêu
+        mà không làm ít nhất một mục tiêu khác xấu đi.
+        """
+    )
+
+    # =====================================================
+    # 7.2. Mô hình toán học
+    # =====================================================
+    st.markdown(
+        "## 7.2. Mô hình toán học đa mục tiêu"
+    )
+
+    st.markdown(
+        "### Mục tiêu 1 — Tối đa hóa tăng trưởng"
+    )
+
+    st.latex(
+        r"\max f_1(x)="
+        r"\sum_r\sum_j"
+        r"\beta_{j,r}x_{j,r}"
+    )
+
+    st.markdown(
+        "### Mục tiêu 2 — Tối thiểu hóa bất bình đẳng vùng"
+    )
+
+    st.latex(
+        r"\min f_2(x)=G(x)"
+    )
+
+    st.markdown(
+        "### Mục tiêu 3 — Tối thiểu hóa phát thải"
+    )
+
+    st.latex(
+        r"\min f_3(x)="
+        r"\sum_re_r"
+        r"(x_{I,r}+x_{AI,r})"
+    )
+
+    st.markdown(
+        "### Mục tiêu 4 — Tối thiểu hóa rủi ro dữ liệu"
+    )
+
+    st.latex(
+        r"\min f_4(x)="
+        r"\sum_r\rho_rx_{AI,r}"
+        r"-\sum_r\sigma_rx_{H,r}"
+    )
+
+    st.markdown(
+        "### Các ràng buộc"
+    )
+
+    st.latex(
+        r"\sum_r\sum_jx_{j,r}"
+        r"\leq50{,}000"
+    )
+
+    st.latex(
+        r"5{,}000"
+        r"\leq\sum_jx_{j,r}"
+        r"\leq12{,}000"
+    )
+
+    st.latex(
+        r"\sum_rx_{H,r}"
+        r"\geq12{,}000"
+    )
+
+    st.latex(
+        r"x_{j,r}\geq0"
+    )
+
+    st.warning(
+        "Với bộ D₀ hiện tại, γ=0,002 và trần 12.000 tỷ/vùng, "
+        "ngưỡng công bằng λ=0,70 không tạo được nghiệm khả thi cho Tây Nguyên. "
+        "Dashboard dùng λ=0,68 để minh họa tập Pareto khả thi; báo cáo nên nêu rõ điều chỉnh này."
+    )
+
+    # =====================================================
+    # 7.3. Bảng tham số
+    # =====================================================
+    st.markdown(
+        "## 7.3. Bảng tham số bổ sung"
+    )
+
+    parameter_table = pd.DataFrame(
+        {
+            "Vùng": regions,
+            "eᵣ - Phát thải": emission_coef,
+            "ρᵣ - Rủi ro dữ liệu": data_risk_coef,
+            "σᵣ - Bảo vệ bởi nhân lực": human_protection_coef,
+            "Digital Index ban đầu": D0,
+        }
+    )
+
+    st.dataframe(
+        parameter_table,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    n_samples = st.slider(
+        "Số nghiệm khả thi dùng để xấp xỉ Pareto",
+        min_value=800,
+        max_value=4000,
+        value=2200,
+        step=400,
+        key="b7_samples",
+    )
+
+    pareto_df, pareto_matrices = _b7_sample_pareto(
+        n_samples=n_samples,
+        seed=42,
+        fairness_lambda=0.68,
+    )
+
+    if pareto_df.empty:
+        st.error(
+            "Không tạo được tập nghiệm Pareto. "
+            "Hãy giảm số mẫu hoặc kiểm tra lại ràng buộc."
+        )
+        return
+
+    # Trọng số thỏa hiệp mặc định
+    default_weights = np.array(
+        [0.40, 0.25, 0.20, 0.15],
+        dtype=float,
+    )
+
+    pareto_df = pareto_df.copy()
+
+    pareto_df[
+        "CompromiseScore"
+    ] = _b7_compromise_score(
+        pareto_df,
+        default_weights,
+    )
+
+    # =====================================================
+    # 7.4. Yêu cầu lập trình
+    # =====================================================
+    st.markdown(
+        "## 7.4. Yêu cầu lập trình"
+    )
+
+    tab741, tab742, tab743, tab744 = st.tabs(
         [
-            ("Số nghiệm Pareto", f"{len(pareto)}", "từ tập mô phỏng khả thi"),
-            ("Growth nghiệm thỏa hiệp", f"{best['Growth']:,.0f}", "GDP gain"),
-            ("Inequality", f"{best['Inequality']:,.0f}", "MAD ngân sách vùng"),
-            ("Compromise score", f"{best['CompromiseScore']:.3f}", "TOPSIS-style"),
+            "7.4.1 - Pareto/NSGA-II",
+            "7.4.2 - Trực quan",
+            "7.4.3 - Nghiệm thỏa hiệp",
+            "7.4.4 - Chi phí cơ hội",
         ]
     )
-    fig = px.scatter_3d(
-        pareto,
-        x="Growth",
-        y="Inequality",
-        z="Emission",
-        color="CompromiseScore",
-        template=PLOT_TEMPLATE,
-        title="Không gian Pareto: Growth - Inequality - Emission",
+
+    # -----------------------------------------------------
+    # 7.4.1
+    # -----------------------------------------------------
+    with tab741:
+        st.markdown(
+            "### Câu 7.4.1. Xây dựng tập nghiệm Pareto"
+        )
+
+        kpi_cards(
+            [
+                (
+                    "Số nghiệm Pareto",
+                    f"{len(pareto_df)}",
+                    "nghiệm không bị trội",
+                ),
+                (
+                    "Growth lớn nhất",
+                    f"{pareto_df['Growth'].max():,.0f}",
+                    "GDP gain",
+                ),
+                (
+                    "Inequality nhỏ nhất",
+                    f"{pareto_df['Inequality'].min():,.0f}",
+                    "độ lệch vùng",
+                ),
+                (
+                    "Fairness thấp nhất",
+                    f"{pareto_df['FairnessRatio'].min():.3f}",
+                    "yêu cầu ≥0,68",
+                ),
+            ]
+        )
+
+        st.dataframe(
+            pareto_df.sort_values(
+                "CompromiseScore",
+                ascending=False,
+            ).head(20),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.info(
+            "Dashboard dùng lấy mẫu khả thi và lọc nondominated để chạy ổn định trên Streamlit. "
+            "Khung mã NSGA-II bằng pymoo được cung cấp bên dưới để đáp ứng yêu cầu phương pháp."
+        )
+
+        with st.expander(
+            "Xem khung mã pymoo/NSGA-II"
+        ):
+            st.code(
+                """from pymoo.core.problem import ElementwiseProblem
+from pymoo.algorithms.moo.nsga2 import NSGA2
+from pymoo.optimize import minimize
+
+class VietnamDigitalProblem(
+    ElementwiseProblem
+):
+    def __init__(self):
+        super().__init__(
+            n_var=24,
+            n_obj=4,
+            n_ieq_constr=constraints_count,
+            xl=np.zeros(24),
+            xu=np.ones(24) * 12000
+        )
+
+    def _evaluate(
+        self,
+        x,
+        out,
+        *args,
+        **kwargs
+    ):
+        X = x.reshape(6, 4)
+
+        growth = (
+            beta * X
+        ).sum()
+
+        inequality = np.abs(
+            X.sum(axis=1)
+            - X.sum(axis=1).mean()
+        ).mean()
+
+        emission = (
+            e * (
+                X[:, 0]
+                + X[:, 2]
+            )
+        ).sum()
+
+        data_risk = (
+            rho * X[:, 2]
+        ).sum() - (
+            sigma * X[:, 3]
+        ).sum()
+
+        out["F"] = [
+            -growth,
+            inequality,
+            emission,
+            data_risk
+        ]
+
+        out["G"] = constraint_vector
+
+algorithm = NSGA2(
+    pop_size=100
+)
+
+result = minimize(
+    VietnamDigitalProblem(),
+    algorithm,
+    ("n_gen", 200),
+    seed=42,
+    verbose=False
+)""",
+                language="python",
+            )
+
+    # -----------------------------------------------------
+    # 7.4.2
+    # -----------------------------------------------------
+    with tab742:
+        st.markdown(
+            "### Câu 7.4.2. Vẽ đường biên Pareto"
+        )
+
+        fig_3d = px.scatter_3d(
+            pareto_df,
+            x="Growth",
+            y="Inequality",
+            z="Emission",
+            color="DataRisk",
+            size="CompromiseScore",
+            template=PLOT_TEMPLATE,
+            title="Đường biên Pareto 3D",
+            hover_data=[
+                "FairnessRatio",
+                "CompromiseScore",
+            ],
+        )
+
+        fig_3d.update_layout(
+            height=650,
+            margin=dict(
+                l=0,
+                r=0,
+                t=54,
+                b=0,
+            ),
+        )
+
+        st.plotly_chart(
+            fig_3d,
+            use_container_width=True,
+        )
+
+        parallel_data = pareto_df[
+            [
+                "Growth",
+                "Inequality",
+                "Emission",
+                "DataRisk",
+                "FairnessRatio",
+                "CompromiseScore",
+            ]
+        ].copy()
+
+        fig_parallel = px.parallel_coordinates(
+            parallel_data,
+            dimensions=[
+                "Growth",
+                "Inequality",
+                "Emission",
+                "DataRisk",
+                "FairnessRatio",
+            ],
+            color="CompromiseScore",
+            title="Parallel coordinates của tập Pareto",
+        )
+
+        fig_parallel.update_layout(
+            height=560,
+        )
+
+        st.plotly_chart(
+            fig_parallel,
+            use_container_width=True,
+        )
+
+    # -----------------------------------------------------
+    # 7.4.3
+    # -----------------------------------------------------
+    with tab743:
+        st.markdown(
+            "### Câu 7.4.3. Chọn nghiệm thỏa hiệp bằng trọng số chính sách"
+        )
+
+        c1, c2, c3, c4 = st.columns(4)
+
+        w_growth = c1.slider(
+            "Growth",
+            0.0,
+            1.0,
+            0.40,
+            0.05,
+            key="b7_w_growth",
+        )
+
+        w_inclusion = c2.slider(
+            "Bao trùm",
+            0.0,
+            1.0,
+            0.25,
+            0.05,
+            key="b7_w_inclusion",
+        )
+
+        w_emission = c3.slider(
+            "Môi trường",
+            0.0,
+            1.0,
+            0.20,
+            0.05,
+            key="b7_w_emission",
+        )
+
+        w_data = c4.slider(
+            "An ninh dữ liệu",
+            0.0,
+            1.0,
+            0.15,
+            0.05,
+            key="b7_w_data",
+        )
+
+        compromise_weights = np.array(
+            [
+                w_growth,
+                w_inclusion,
+                w_emission,
+                w_data,
+            ]
+        )
+
+        if compromise_weights.sum() <= 0:
+            st.error(
+                "Tổng trọng số phải lớn hơn 0."
+            )
+            return
+
+        compromise_score = _b7_compromise_score(
+            pareto_df,
+            compromise_weights,
+        )
+
+        best_position = int(
+            np.argmax(
+                compromise_score.to_numpy()
+            )
+        )
+
+        best_row = pareto_df.iloc[
+            best_position
+        ].copy()
+
+        best_matrix = pareto_matrices[
+            best_position
+        ]
+
+        allocation_table = pd.DataFrame(
+            best_matrix,
+            columns=items,
+        )
+
+        allocation_table.insert(
+            0,
+            "Vùng",
+            regions,
+        )
+
+        allocation_table[
+            "Tổng vùng"
+        ] = best_matrix.sum(
+            axis=1
+        )
+
+        kpi_cards(
+            [
+                (
+                    "Growth",
+                    f"{best_row['Growth']:,.0f}",
+                    "mục tiêu tối đa hóa",
+                ),
+                (
+                    "Inequality",
+                    f"{best_row['Inequality']:,.0f}",
+                    "mục tiêu tối thiểu hóa",
+                ),
+                (
+                    "Emission",
+                    f"{best_row['Emission']:,.0f}",
+                    "mục tiêu tối thiểu hóa",
+                ),
+                (
+                    "Data risk",
+                    f"{best_row['DataRisk']:,.0f}",
+                    "mục tiêu tối thiểu hóa",
+                ),
+            ]
+        )
+
+        st.dataframe(
+            allocation_table,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        heatmap = px.imshow(
+            pd.DataFrame(
+                best_matrix,
+                index=regions,
+                columns=items,
+            ),
+            text_auto=".0f",
+            aspect="auto",
+            color_continuous_scale="RdPu",
+            template=PLOT_TEMPLATE,
+            title="Phân bổ của nghiệm thỏa hiệp",
+        )
+
+        heatmap.update_layout(
+            height=560,
+            margin=dict(
+                l=10,
+                r=10,
+                t=54,
+                b=10,
+            ),
+        )
+
+        st.plotly_chart(
+            heatmap,
+            use_container_width=True,
+        )
+
+        st.info(
+            f"Tỷ lệ công bằng của nghiệm thỏa hiệp là "
+            f"**{best_row['FairnessRatio']:.3f}**."
+        )
+
+    # -----------------------------------------------------
+    # 7.4.4
+    # -----------------------------------------------------
+    with tab744:
+        st.markdown(
+            "### Câu 7.4.4. Chi phí cơ hội của nghiệm tăng trưởng cao nhất"
+        )
+
+        growth_position = int(
+            pareto_df[
+                "Growth"
+            ].to_numpy().argmax()
+        )
+
+        default_best_position = int(
+            pareto_df[
+                "CompromiseScore"
+            ].to_numpy().argmax()
+        )
+
+        growth_row = pareto_df.iloc[
+            growth_position
+        ]
+
+        compromise_row = pareto_df.iloc[
+            default_best_position
+        ]
+
+        comparison = pd.DataFrame(
+            {
+                "Nghiệm": [
+                    "Tăng trưởng cao nhất",
+                    "Thỏa hiệp 0,40-0,25-0,20-0,15",
+                ],
+                "Growth": [
+                    growth_row["Growth"],
+                    compromise_row["Growth"],
+                ],
+                "Inequality": [
+                    growth_row["Inequality"],
+                    compromise_row["Inequality"],
+                ],
+                "Emission": [
+                    growth_row["Emission"],
+                    compromise_row["Emission"],
+                ],
+                "DataRisk": [
+                    growth_row["DataRisk"],
+                    compromise_row["DataRisk"],
+                ],
+                "FairnessRatio": [
+                    growth_row["FairnessRatio"],
+                    compromise_row["FairnessRatio"],
+                ],
+            }
+        )
+
+        st.dataframe(
+            comparison,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        growth_gain = (
+            growth_row["Growth"]
+            - compromise_row["Growth"]
+        )
+
+        inequality_change = (
+            growth_row["Inequality"]
+            - compromise_row["Inequality"]
+        )
+
+        emission_change = (
+            growth_row["Emission"]
+            - compromise_row["Emission"]
+        )
+
+        data_risk_change = (
+            growth_row["DataRisk"]
+            - compromise_row["DataRisk"]
+        )
+
+        kpi_cards(
+            [
+                (
+                    "Growth tăng thêm",
+                    f"{growth_gain:,.0f}",
+                    "so với nghiệm thỏa hiệp",
+                ),
+                (
+                    "Inequality thay đổi",
+                    f"{inequality_change:+,.0f}",
+                    "dương là xấu hơn",
+                ),
+                (
+                    "Emission thay đổi",
+                    f"{emission_change:+,.0f}",
+                    "dương là xấu hơn",
+                ),
+                (
+                    "Data risk thay đổi",
+                    f"{data_risk_change:+,.0f}",
+                    "dương là xấu hơn",
+                ),
+            ]
+        )
+
+        long_compare = comparison.melt(
+            id_vars="Nghiệm",
+            value_vars=[
+                "Growth",
+                "Inequality",
+                "Emission",
+                "DataRisk",
+            ],
+            var_name="Mục tiêu",
+            value_name="Giá trị",
+        )
+
+        fig_compare = px.bar(
+            long_compare,
+            x="Mục tiêu",
+            y="Giá trị",
+            color="Nghiệm",
+            barmode="group",
+            template=PLOT_TEMPLATE,
+            title="Đánh đổi giữa tăng trưởng và các mục tiêu còn lại",
+        )
+
+        fig_compare.update_layout(
+            height=480,
+            margin=dict(
+                l=10,
+                r=10,
+                t=54,
+                b=10,
+            ),
+        )
+
+        st.plotly_chart(
+            fig_compare,
+            use_container_width=True,
+        )
+
+    # =====================================================
+    # Tải kết quả
+    # =====================================================
+    export_columns = [
+        "Growth",
+        "Inequality",
+        "Emission",
+        "DataRisk",
+        "FairnessRatio",
+        "CompromiseScore",
+    ]
+
+    st.download_button(
+        "Tải tập Pareto Bài 7 dạng CSV",
+        data=pareto_df[
+            export_columns
+        ].to_csv(
+            index=False
+        ).encode(
+            "utf-8-sig"
+        ),
+        file_name="bai7_pareto_front.csv",
+        mime="text/csv",
+        key="download_bai7",
     )
-    fig.update_layout(height=620, margin=dict(l=0, r=0, t=54, b=0))
-    st.plotly_chart(fig, use_container_width=True)
-    st.dataframe(pareto.sort_values("CompromiseScore", ascending=False).head(10), use_container_width=True, hide_index=True)
+
+    # =====================================================
+    # 7.5. Câu hỏi thảo luận chính sách
+    # =====================================================
+    st.markdown(
+        "## 7.5. Câu hỏi thảo luận chính sách"
+    )
+
+    with st.expander(
+        "a) Đánh đổi tăng trưởng và bao trùm có rõ ràng không?",
+        expanded=True,
+    ):
+        correlation = pareto_df[
+            [
+                "Growth",
+                "Inequality",
+            ]
+        ].corr().iloc[
+            0,
+            1,
+        ]
+
+        st.markdown(
+            f"Hệ số tương quan trong tập Pareto giữa Growth và Inequality là "
+            f"**{correlation:.3f}**. Nếu hệ số dương và đủ lớn, tăng trưởng cao hơn "
+            "thường đi kèm mức độ tập trung ngân sách vùng lớn hơn."
+        )
+
+    with st.expander(
+        "b) Bộ trọng số 0,40-0,25-0,20-0,15 có phù hợp không?",
+        expanded=True,
+    ):
+        st.markdown(
+            "Bộ trọng số này ưu tiên tăng trưởng nhưng vẫn dành 60% tổng trọng số cho "
+            "bao trùm, môi trường và an ninh dữ liệu. Có thể tăng trọng số môi trường "
+            "để phản ánh cam kết COP26 hoặc tăng trọng số dữ liệu khi mở rộng AI quy mô lớn."
+        )
+
+    with st.expander(
+        "c) NSGA-II có thay thế quyết định chính trị không?",
+        expanded=True,
+    ):
+        st.markdown(
+            "Không. NSGA-II chỉ tạo tập phương án và lượng hóa đánh đổi. "
+            "Lựa chọn cuối cùng vẫn cần tham vấn xã hội, đánh giá pháp lý, "
+            "trách nhiệm giải trình và quyết định của cơ quan có thẩm quyền."
+        )
 
 
 def page_8():

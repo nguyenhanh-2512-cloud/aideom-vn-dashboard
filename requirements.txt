@@ -1,5 +1,8 @@
-streamlit>=1.32
+streamlit>=1.28
 pandas>=2.0
 numpy>=1.24
 scipy>=1.10
 plotly>=5.17
+pulp>=2.7
+cvxpy>=1.4
+pymoo>=0.6.1
