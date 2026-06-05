@@ -1417,68 +1417,726 @@ print(res_priority_H.x)""",
         )
 
 
-def page_3():
-    hero(
-        "Bài 3 — Chỉ số Priority cho 10 ngành",
-        "Chuẩn hóa min-max, gán trọng số chính sách và xếp hạng 10 ngành Việt Nam theo mức độ ưu tiên chuyển đổi số và AI.",
-        ["MCDM", "Min-max", "Policy weights"],
+def _b3_column_map(df):
+    """
+    Xác định tên cột dữ liệu hiện có trong file sectors.
+    Nếu chưa có cột năng suất lao động, dùng tỷ trọng GDP làm biến đại diện.
+    """
+    productivity_col = (
+        "labor_productivity_million_VND"
+        if "labor_productivity_million_VND" in df.columns
+        else "gdp_share_2024_pct"
     )
+
+    return {
+        "growth": "growth_rate_2024_pct",
+        "productivity": productivity_col,
+        "spillover": "spillover_coef_0_1",
+        "export": "export_billion_USD",
+        "employment": "labor_million",
+        "ai": "ai_readiness_0_100",
+        "risk": "automation_risk_pct",
+    }
+
+
+def _b3_prepare_data():
+    """
+    Đọc dữ liệu ngành và chuẩn hóa 7 tiêu chí về [0,1].
+    Risk là tiêu chí chi phí nên được trừ trong hàm Priority.
+    """
     df = load_sectors().copy()
-    cols_good = [
-        "growth_rate_2024_pct",
-        "gdp_share_2024_pct",
-        "spillover_coef_0_1",
-        "export_billion_USD",
-        "labor_million",
-        "ai_readiness_0_100",
-    ]
-    labels = ["Tăng trưởng", "Quy mô GDP", "Lan tỏa", "Xuất khẩu", "Việc làm", "AI readiness", "Giảm rủi ro"]
-    default_w = np.array([0.15, 0.15, 0.20, 0.15, 0.10, 0.20, 0.15], dtype=float)
-    st.markdown("#### Điều chỉnh trọng số")
-    cols = st.columns(7)
-    weights = []
-    for col, label, val in zip(cols, labels, default_w):
-        weights.append(col.slider(label, 0.00, 0.40, float(val), 0.01))
-    weights = np.array(weights)
-    weights = weights / max(weights.sum(), 1e-9)
+    cmap = _b3_column_map(df)
 
-    X = pd.DataFrame({c: minmax(df[c]) for c in cols_good})
-    X["risk_reversed"] = reverse_minmax(df["automation_risk_pct"])
-    df["Priority"] = X.values @ weights
-    result = df[["sector_name_vi", "Priority", "growth_rate_2024_pct", "export_billion_USD", "ai_readiness_0_100", "automation_risk_pct"]].sort_values("Priority", ascending=False)
-    result["Rank"] = np.arange(1, len(result) + 1)
+    norm = pd.DataFrame(index=df.index)
 
-    top3 = ", ".join(result.head(3)["sector_name_vi"].tolist())
-    kpi_cards(
+    norm[cmap["growth"]] = minmax(df[cmap["growth"]])
+    norm[cmap["productivity"]] = minmax(df[cmap["productivity"]])
+    norm[cmap["spillover"]] = minmax(df[cmap["spillover"]])
+    norm[cmap["export"]] = minmax(df[cmap["export"]])
+    norm[cmap["employment"]] = minmax(df[cmap["employment"]])
+    norm[cmap["ai"]] = minmax(df[cmap["ai"]])
+    norm[cmap["risk"]] = minmax(df[cmap["risk"]])
+
+    return df, cmap, norm
+
+
+def _b3_priority_score(norm, cmap, weights):
+    """
+    Tính:
+    Priority = a1*Growth + a2*Productivity + a3*Spillover
+             + a4*Export + a5*Employment + a6*AI - a7*Risk
+    """
+    weights = np.asarray(weights, dtype=float)
+
+    positive_matrix = np.column_stack(
         [
-            ("Top 1", result.iloc[0]["sector_name_vi"], f"Priority={result.iloc[0]['Priority']:.3f}"),
-            ("Top 3", top3, "ưu tiên chính sách"),
-            ("AI readiness cao nhất", df.loc[df["ai_readiness_0_100"].idxmax(), "sector_name_vi"], "dữ liệu ngành 2024"),
-            ("Rủi ro tự động hóa cao nhất", df.loc[df["automation_risk_pct"].idxmax(), "sector_name_vi"], "cần đào tạo lại"),
+            norm[cmap["growth"]].to_numpy(dtype=float),
+            norm[cmap["productivity"]].to_numpy(dtype=float),
+            norm[cmap["spillover"]].to_numpy(dtype=float),
+            norm[cmap["export"]].to_numpy(dtype=float),
+            norm[cmap["employment"]].to_numpy(dtype=float),
+            norm[cmap["ai"]].to_numpy(dtype=float),
         ]
     )
-    c1, c2 = st.columns([1, 1])
-    with c1:
-        st.dataframe(result, use_container_width=True, hide_index=True)
-    with c2:
-        st.plotly_chart(plot_bar(result, "sector_name_vi", "Priority", "Xếp hạng Priority theo ngành", text="Priority"), use_container_width=True)
 
-    ai_vals = np.arange(0.05, 0.41, 0.05)
-    rows = []
-    base_without_ai = np.array([0.15, 0.15, 0.20, 0.15, 0.10, 0.15], dtype=float)
-    for w_ai in ai_vals:
-        w_other = base_without_ai / base_without_ai.sum() * (1 - w_ai)
-        w = np.array([w_other[0], w_other[1], w_other[2], w_other[3], w_other[4], w_ai, w_other[5]])
-        score = X.values @ w
-        rank_df = pd.DataFrame({"sector_name_vi": df["sector_name_vi"], "score": score}).sort_values("score", ascending=False)
-        for rank, sector in enumerate(rank_df["sector_name_vi"], start=1):
-            rows.append([w_ai, sector, rank])
-    sens = pd.DataFrame(rows, columns=["Trọng số AI", "Ngành", "Rank"])
-    top_sectors = result.head(6)["sector_name_vi"].tolist()
-    fig = px.line(sens[sens["Ngành"].isin(top_sectors)], x="Trọng số AI", y="Rank", color="Ngành", markers=True, template=PLOT_TEMPLATE, title="Độ nhạy thứ hạng khi tăng trọng số AI")
-    fig.update_yaxes(autorange="reversed")
-    st.plotly_chart(fig, use_container_width=True)
+    risk = norm[cmap["risk"]].to_numpy(dtype=float)
 
+    return positive_matrix @ weights[:6] - weights[6] * risk
+
+
+def page_3():
+    hero(
+        "Bài 3 — Tính chỉ số ưu tiên ngành Priorityᵢ cho 10 ngành Việt Nam",
+        "Trình bày đầy đủ các mục 3.1-3.5: bối cảnh, mô hình, dữ liệu, chuẩn hóa, xếp hạng, độ nhạy trọng số và thảo luận chính sách.",
+        ["3.1-3.5", "Min-max", "MCDM", "AI readiness", "Policy weights"],
+    )
+
+    df, cmap, norm = _b3_prepare_data()
+    sector_col = "sector_name_vi"
+
+    # =====================================================
+    # 3.1. Bối cảnh Việt Nam
+    # =====================================================
+    st.markdown("## 3.1. Bối cảnh Việt Nam")
+    st.markdown(
+        """
+        Việt Nam cần xác định ngành nào nên được ưu tiên chuyển đổi số và ứng dụng AI
+        trước để tạo hiệu ứng lan tỏa lớn nhất. Nếu chỉ dựa vào một chỉ tiêu như tốc độ
+        tăng trưởng hoặc năng suất lao động thì kết quả có thể bị thiên lệch.
+
+        Vì vậy, Bài 3 xây dựng một **chỉ số ưu tiên tổng hợp Priorityᵢ** dựa trên:
+        tăng trưởng, năng suất, hiệu ứng lan tỏa, xuất khẩu, việc làm, mức sẵn sàng AI
+        và rủi ro tự động hóa.
+        """
+    )
+
+    # =====================================================
+    # 3.2. Mô hình toán học
+    # =====================================================
+    st.markdown("## 3.2. Mô hình toán học")
+
+    st.latex(
+        r"Priority_i="
+        r"a_1Growth_i+a_2Productivity_i+a_3Spillover_i"
+        r"+a_4Export_i+a_5Employment_i+a_6AIReadiness_i"
+        r"-a_7Risk_i"
+    )
+
+    st.markdown("### Chuẩn hóa min-max")
+    st.latex(
+        r"\widetilde{x}_i="
+        r"\frac{x_i-\min(x)}{\max(x)-\min(x)}"
+    )
+
+    st.markdown(
+        """
+        Sáu tiêu chí đầu là **tiêu chí lợi ích**: giá trị càng cao càng tốt.
+        Rủi ro tự động hóa là **tiêu chí chi phí**, do đó được trừ khỏi tổng điểm.
+
+        Các biến được chuẩn hóa về thang từ 0 đến 1 trước khi tính chỉ số Priority.
+        """
+    )
+
+    # =====================================================
+    # 3.3. Dữ liệu 10 ngành Việt Nam năm 2024
+    # =====================================================
+    st.markdown("## 3.3. Dữ liệu 10 ngành Việt Nam năm 2024")
+
+    display_cols = [
+        sector_col,
+        cmap["growth"],
+        cmap["productivity"],
+        cmap["spillover"],
+        cmap["export"],
+        cmap["employment"],
+        cmap["ai"],
+        cmap["risk"],
+    ]
+
+    productivity_label = (
+        "Năng suất lao động"
+        if cmap["productivity"] == "labor_productivity_million_VND"
+        else "Tỷ trọng GDP đại diện năng suất"
+    )
+
+    rename_map = {
+        sector_col: "Ngành",
+        cmap["growth"]: "Tăng trưởng (%)",
+        cmap["productivity"]: productivity_label,
+        cmap["spillover"]: "Hiệu ứng lan tỏa",
+        cmap["export"]: "Xuất khẩu (tỷ USD)",
+        cmap["employment"]: "Việc làm (triệu người)",
+        cmap["ai"]: "AI readiness",
+        cmap["risk"]: "Rủi ro tự động hóa (%)",
+    }
+
+    st.dataframe(
+        df[display_cols].rename(columns=rename_map),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.caption(
+        "Nếu file dữ liệu chưa có cột năng suất lao động, hệ thống sử dụng tỷ trọng GDP "
+        "làm biến đại diện để trang vẫn hoạt động ổn định."
+    )
+
+    # Bộ trọng số mặc định theo đề
+    default_weights = np.array(
+        [0.15, 0.15, 0.20, 0.15, 0.10, 0.20, 0.15],
+        dtype=float,
+    )
+
+    default_score = _b3_priority_score(
+        norm,
+        cmap,
+        default_weights,
+    )
+
+    default_result = pd.DataFrame(
+        {
+            "Ngành": df[sector_col],
+            "Priority": default_score,
+        }
+    ).sort_values(
+        "Priority",
+        ascending=False,
+    )
+
+    default_result["Xếp hạng"] = np.arange(
+        1,
+        len(default_result) + 1,
+    )
+
+    # =====================================================
+    # 3.4. Yêu cầu lập trình
+    # =====================================================
+    st.markdown("## 3.4. Yêu cầu lập trình")
+
+    tab341, tab342, tab343, tab344 = st.tabs(
+        [
+            "3.4.1 - Chuẩn hóa",
+            "3.4.2 - Priority mặc định",
+            "3.4.3 - Độ nhạy AI",
+            "3.4.4 - Hai định hướng",
+        ]
+    )
+
+    # -----------------------------------------------------
+    # 3.4.1
+    # -----------------------------------------------------
+    with tab341:
+        st.markdown(
+            "### Câu 3.4.1. Chuẩn hóa min-max toàn bộ 7 tiêu chí"
+        )
+
+        normalized_table = pd.DataFrame(
+            {
+                "Ngành": df[sector_col],
+                "Growth_norm": norm[cmap["growth"]],
+                "Productivity_norm": norm[cmap["productivity"]],
+                "Spillover_norm": norm[cmap["spillover"]],
+                "Export_norm": norm[cmap["export"]],
+                "Employment_norm": norm[cmap["employment"]],
+                "AI_norm": norm[cmap["ai"]],
+                "Risk_norm": norm[cmap["risk"]],
+            }
+        )
+
+        format_dict = {
+            column: "{:.4f}"
+            for column in normalized_table.columns
+            if column != "Ngành"
+        }
+
+        st.dataframe(
+            normalized_table.style.format(format_dict),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.info(
+            "Sau chuẩn hóa, giá trị nhỏ nhất của mỗi tiêu chí bằng 0 và giá trị lớn nhất bằng 1."
+        )
+
+        with st.expander("Xem mã Python cho câu 3.4.1"):
+            st.code(
+                """def minmax_normalize(series):
+    return (series - series.min()) / (
+        series.max() - series.min()
+    )
+
+normalized = df[criteria].apply(
+    minmax_normalize
+)""",
+                language="python",
+            )
+
+    # -----------------------------------------------------
+    # 3.4.2
+    # -----------------------------------------------------
+    with tab342:
+        st.markdown(
+            "### Câu 3.4.2. Tính Priorityᵢ và xếp hạng 10 ngành"
+        )
+
+        top3_names = ", ".join(
+            default_result.head(3)["Ngành"].tolist()
+        )
+
+        kpi_cards(
+            [
+                (
+                    "Ngành xếp thứ nhất",
+                    default_result.iloc[0]["Ngành"],
+                    f"Priority = {default_result.iloc[0]['Priority']:.3f}",
+                ),
+                (
+                    "Top 3",
+                    top3_names,
+                    "theo bộ trọng số mặc định",
+                ),
+                (
+                    "AI readiness cao nhất",
+                    df.loc[
+                        df[cmap["ai"]].idxmax(),
+                        sector_col,
+                    ],
+                    "theo dữ liệu ngành",
+                ),
+                (
+                    "Rủi ro cao nhất",
+                    df.loc[
+                        df[cmap["risk"]].idxmax(),
+                        sector_col,
+                    ],
+                    "cần ưu tiên đào tạo lại",
+                ),
+            ]
+        )
+
+        c1, c2 = st.columns([1, 1])
+
+        with c1:
+            st.dataframe(
+                default_result.style.format(
+                    {"Priority": "{:.4f}"}
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        with c2:
+            st.plotly_chart(
+                plot_bar(
+                    default_result,
+                    "Ngành",
+                    "Priority",
+                    "Xếp hạng Priority theo ngành",
+                    text="Priority",
+                ),
+                use_container_width=True,
+            )
+
+        st.caption(
+            "Tổng trọng số trong đề lớn hơn 1. Điều này không làm thay đổi thứ hạng "
+            "nếu tất cả trọng số được nhân hoặc chia cùng một tỷ lệ."
+        )
+
+        with st.expander("Xem mã Python cho câu 3.4.2"):
+            st.code(
+                """weights = np.array([
+    0.15, 0.15, 0.20,
+    0.15, 0.10, 0.20, 0.15
+])
+
+priority = (
+    weights[0] * growth_norm
+    + weights[1] * productivity_norm
+    + weights[2] * spillover_norm
+    + weights[3] * export_norm
+    + weights[4] * employment_norm
+    + weights[5] * ai_norm
+    - weights[6] * risk_norm
+)""",
+                language="python",
+            )
+
+    # -----------------------------------------------------
+    # 3.4.3
+    # -----------------------------------------------------
+    with tab343:
+        st.markdown(
+            "### Câu 3.4.3. Phân tích độ nhạy trọng số AI readiness"
+        )
+
+        ai_weight_values = np.arange(
+            0.05,
+            0.401,
+            0.05,
+        )
+
+        # Trọng số còn lại, trừ AI
+        other_base = np.array(
+            [0.15, 0.15, 0.20, 0.15, 0.10, 0.15],
+            dtype=float,
+        )
+
+        sensitivity_rows = []
+        top3_sets = []
+
+        for ai_weight in ai_weight_values:
+            remaining_weight = 1 - ai_weight
+
+            scaled_other = (
+                other_base
+                / other_base.sum()
+                * remaining_weight
+            )
+
+            weights = np.array(
+                [
+                    scaled_other[0],
+                    scaled_other[1],
+                    scaled_other[2],
+                    scaled_other[3],
+                    scaled_other[4],
+                    ai_weight,
+                    scaled_other[5],
+                ]
+            )
+
+            score = _b3_priority_score(
+                norm,
+                cmap,
+                weights,
+            )
+
+            temp_result = pd.DataFrame(
+                {
+                    "Ngành": df[sector_col],
+                    "Điểm": score,
+                }
+            ).sort_values(
+                "Điểm",
+                ascending=False,
+            )
+
+            top3_sets.append(
+                (
+                    ai_weight,
+                    tuple(
+                        temp_result.head(3)["Ngành"]
+                    ),
+                )
+            )
+
+            for rank, (_, row) in enumerate(
+                temp_result.iterrows(),
+                start=1,
+            ):
+                sensitivity_rows.append(
+                    [
+                        ai_weight,
+                        row["Ngành"],
+                        rank,
+                        row["Điểm"],
+                    ]
+                )
+
+        sensitivity_df = pd.DataFrame(
+            sensitivity_rows,
+            columns=[
+                "Trọng số AI",
+                "Ngành",
+                "Xếp hạng",
+                "Điểm",
+            ],
+        )
+
+        fig_line = px.line(
+            sensitivity_df,
+            x="Trọng số AI",
+            y="Xếp hạng",
+            color="Ngành",
+            markers=True,
+            template=PLOT_TEMPLATE,
+            title="Thứ hạng ngành khi trọng số AI thay đổi",
+        )
+
+        fig_line.update_yaxes(
+            autorange="reversed"
+        )
+
+        fig_line.update_layout(
+            height=540,
+            margin=dict(
+                l=10,
+                r=10,
+                t=54,
+                b=10,
+            ),
+        )
+
+        st.plotly_chart(
+            fig_line,
+            use_container_width=True,
+        )
+
+        rank_pivot = sensitivity_df.pivot(
+            index="Ngành",
+            columns="Trọng số AI",
+            values="Xếp hạng",
+        )
+
+        fig_heatmap = px.imshow(
+            rank_pivot,
+            text_auto=".0f",
+            aspect="auto",
+            color_continuous_scale="RdYlGn_r",
+            template=PLOT_TEMPLATE,
+            title="Heatmap độ nhạy thứ hạng",
+        )
+
+        fig_heatmap.update_layout(
+            height=560,
+            margin=dict(
+                l=10,
+                r=10,
+                t=54,
+                b=10,
+            ),
+        )
+
+        st.plotly_chart(
+            fig_heatmap,
+            use_container_width=True,
+        )
+
+        unique_top3_count = len(
+            set(
+                top3
+                for _, top3 in top3_sets
+            )
+        )
+
+        st.info(
+            f"Trong dải trọng số AI từ 0,05 đến 0,40 có "
+            f"**{unique_top3_count} cấu hình top-3 khác nhau**. "
+            "Nếu số này lớn hơn 1, thứ hạng chưa hoàn toàn ổn định."
+        )
+
+        with st.expander("Xem mã Python cho câu 3.4.3"):
+            st.code(
+                """for w_ai in np.arange(
+    0.05, 0.401, 0.05
+):
+    # phân bổ lại trọng số còn lại
+    # tính lại Priority
+    # xếp hạng và lưu kết quả
+    pass""",
+                language="python",
+            )
+
+    # -----------------------------------------------------
+    # 3.4.4
+    # -----------------------------------------------------
+    with tab344:
+        st.markdown(
+            "### Câu 3.4.4. So sánh hai định hướng chính sách"
+        )
+
+        growth_weights = np.array(
+            [
+                0.24,
+                0.22,
+                0.12,
+                0.20,
+                0.06,
+                0.10,
+                0.06,
+            ]
+        )
+
+        inclusive_weights = np.array(
+            [
+                0.08,
+                0.08,
+                0.22,
+                0.05,
+                0.22,
+                0.12,
+                0.23,
+            ]
+        )
+
+        growth_score = _b3_priority_score(
+            norm,
+            cmap,
+            growth_weights,
+        )
+
+        inclusive_score = _b3_priority_score(
+            norm,
+            cmap,
+            inclusive_weights,
+        )
+
+        comparison = pd.DataFrame(
+            {
+                "Ngành": df[sector_col],
+                "Điểm tăng trưởng": growth_score,
+                "Điểm bao trùm": inclusive_score,
+            }
+        )
+
+        comparison["Hạng tăng trưởng"] = (
+            comparison["Điểm tăng trưởng"]
+            .rank(
+                ascending=False,
+                method="min",
+            )
+            .astype(int)
+        )
+
+        comparison["Hạng bao trùm"] = (
+            comparison["Điểm bao trùm"]
+            .rank(
+                ascending=False,
+                method="min",
+            )
+            .astype(int)
+        )
+
+        comparison["Thay đổi hạng"] = (
+            comparison["Hạng tăng trưởng"]
+            - comparison["Hạng bao trùm"]
+        )
+
+        st.dataframe(
+            comparison.sort_values(
+                "Hạng tăng trưởng"
+            ).style.format(
+                {
+                    "Điểm tăng trưởng": "{:.4f}",
+                    "Điểm bao trùm": "{:.4f}",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        comparison_long = comparison.melt(
+            id_vars="Ngành",
+            value_vars=[
+                "Điểm tăng trưởng",
+                "Điểm bao trùm",
+            ],
+            var_name="Định hướng",
+            value_name="Điểm",
+        )
+
+        fig_compare = px.bar(
+            comparison_long,
+            x="Ngành",
+            y="Điểm",
+            color="Định hướng",
+            barmode="group",
+            template=PLOT_TEMPLATE,
+            title="So sánh định hướng tăng trưởng và bao trùm",
+        )
+
+        fig_compare.update_layout(
+            height=480,
+            margin=dict(
+                l=10,
+                r=10,
+                t=54,
+                b=10,
+            ),
+        )
+
+        st.plotly_chart(
+            fig_compare,
+            use_container_width=True,
+        )
+
+        growth_top3 = ", ".join(
+            comparison.sort_values(
+                "Hạng tăng trưởng"
+            ).head(3)["Ngành"]
+        )
+
+        inclusive_top3 = ", ".join(
+            comparison.sort_values(
+                "Hạng bao trùm"
+            ).head(3)["Ngành"]
+        )
+
+        st.success(
+            f"Top-3 theo định hướng tăng trưởng: **{growth_top3}**."
+        )
+
+        st.info(
+            f"Top-3 theo định hướng bao trùm: **{inclusive_top3}**."
+        )
+
+    # =====================================================
+    # Tải kết quả
+    # =====================================================
+    st.download_button(
+        "Tải kết quả Bài 3 dạng CSV",
+        data=default_result.to_csv(
+            index=False
+        ).encode(
+            "utf-8-sig"
+        ),
+        file_name="bai3_priority_10_nganh.csv",
+        mime="text/csv",
+        key="download_bai3",
+    )
+
+    # =====================================================
+    # 3.5. Câu hỏi thảo luận chính sách
+    # =====================================================
+    st.markdown(
+        "## 3.5. Câu hỏi thảo luận chính sách"
+    )
+
+    top3_names = ", ".join(
+        default_result.head(3)["Ngành"].tolist()
+    )
+
+    with st.expander(
+        "a) Ba ngành nào nên được ưu tiên chuyển đổi số và AI trước?",
+        expanded=True,
+    ):
+        st.markdown(
+            f"Theo bộ trọng số mặc định, ba ngành có chỉ số Priority cao nhất là "
+            f"**{top3_names}**. Đây là các ngành đạt sự kết hợp tương đối tốt giữa "
+            "tăng trưởng, lan tỏa, xuất khẩu, việc làm và mức sẵn sàng AI."
+        )
+
+    with st.expander(
+        "b) Vì sao Khai khoáng có năng suất cao nhưng có thể không thuộc nhóm ưu tiên?",
+        expanded=True,
+    ):
+        st.markdown(
+            "Khai khoáng có thể có năng suất lao động cao nhưng quy mô việc làm nhỏ, "
+            "tốc độ tăng trưởng thấp hoặc âm, hiệu ứng lan tỏa số hạn chế và rủi ro "
+            "tự động hóa tương đối lớn. Chỉ số tổng hợp vì vậy không đồng nhất năng suất "
+            "cao với mức ưu tiên chính sách cao."
+        )
+
+    with st.expander(
+        "c) Trọng số nên do chuyên gia, chính trị hay tham vấn công khai quyết định?",
+        expanded=True,
+    ):
+        st.markdown(
+            "Nên sử dụng quy trình kết hợp. Chuyên gia kỹ thuật xây dựng cơ sở định lượng; "
+            "cơ quan hoạch định chính sách xác định mục tiêu phát triển và giới hạn ngân sách; "
+            "tham vấn công khai giúp tăng tính minh bạch, trách nhiệm giải trình và tính chính danh."
+        )
 
 def solve_region_lp(fairness=True):
     regions, items, beta, D0 = region_beta_matrix()
