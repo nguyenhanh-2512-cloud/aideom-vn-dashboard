@@ -2138,95 +2138,939 @@ priority = (
             "tham vấn công khai giúp tăng tính minh bạch, trách nhiệm giải trình và tính chính danh."
         )
 
-def solve_region_lp(fairness=True):
+def _b4_solve_scipy(fairness=True, total_budget=50000.0):
+    """
+    Giải bài toán LP phân bổ ngân sách số cho 6 vùng × 4 hạng mục.
+
+    Biến:
+    - 24 biến x[r,j]
+    - 1 biến M dùng cho ràng buộc công bằng vùng
+
+    fairness=True:
+        bật ràng buộc mọi vùng phải đạt ít nhất 70% mức Digital Index cao nhất.
+    """
     regions, items, beta, D0 = region_beta_matrix()
+
     n_x = 24
-    M_idx = 24
-    n = 25
-    c = np.zeros(n)
+    m_index = 24
+    n_var = 25
+
+    # scipy.optimize.linprog là bài toán tối thiểu hóa,
+    # nên đổi max Z thành min(-Z)
+    c = np.zeros(n_var, dtype=float)
     c[:n_x] = -beta.reshape(-1)
-    A_ub, b_ub = [], []
 
-    row = np.zeros(n)
-    row[:n_x] = 1
+    A_ub = []
+    b_ub = []
+
+    # C1. Tổng ngân sách toàn quốc không vượt 50.000
+    row = np.zeros(n_var, dtype=float)
+    row[:n_x] = 1.0
     A_ub.append(row)
-    b_ub.append(50000)
+    b_ub.append(float(total_budget))
 
+    # C2-C3. Mỗi vùng nhận từ 5.000 đến 12.000
     for r in range(6):
-        row = np.zeros(n)
-        row[r * 4 : r * 4 + 4] = 1
+        # Tổng vùng >= 5.000
+        row = np.zeros(n_var, dtype=float)
+        row[r * 4 : r * 4 + 4] = -1.0
         A_ub.append(row)
-        b_ub.append(12000)
-        row = np.zeros(n)
-        row[r * 4 : r * 4 + 4] = -1
-        A_ub.append(row)
-        b_ub.append(-5000)
+        b_ub.append(-5000.0)
 
-    row = np.zeros(n)
+        # Tổng vùng <= 12.000
+        row = np.zeros(n_var, dtype=float)
+        row[r * 4 : r * 4 + 4] = 1.0
+        A_ub.append(row)
+        b_ub.append(12000.0)
+
+    # C4. Tổng đầu tư nhân lực số toàn quốc >= 12.000
+    row = np.zeros(n_var, dtype=float)
     for r in range(6):
-        row[r * 4 + 3] = -1
+        row[r * 4 + 3] = -1.0
     A_ub.append(row)
-    b_ub.append(-12000)
+    b_ub.append(-12000.0)
 
+    # C5. Công bằng vùng:
+    # D_r + gamma*x_D,r >= lambda*M
+    # D_r + gamma*x_D,r <= M
     if fairness:
         gamma = 0.002
         lam = 0.7
-        for r in range(6):
-            row = np.zeros(n)
-            row[r * 4 + 1] = gamma
-            row[M_idx] = -1
-            A_ub.append(row)
-            b_ub.append(-D0[r])
-        for r in range(6):
-            row = np.zeros(n)
-            row[r * 4 + 1] = -gamma
-            row[M_idx] = lam
-            A_ub.append(row)
-            b_ub.append(D0[r])
 
-    res = linprog(c, A_ub=np.array(A_ub), b_ub=np.array(b_ub), bounds=[(0, None)] * n, method="highs")
-    return res, regions, items, beta
+        # M phải lớn hơn hoặc bằng Digital Index sau đầu tư của từng vùng
+        for r in range(6):
+            row = np.zeros(n_var, dtype=float)
+            row[r * 4 + 1] = gamma
+            row[m_index] = -1.0
+            A_ub.append(row)
+            b_ub.append(-float(D0[r]))
+
+        # Mỗi vùng phải đạt ít nhất 70% mức cao nhất M
+        for r in range(6):
+            row = np.zeros(n_var, dtype=float)
+            row[r * 4 + 1] = -gamma
+            row[m_index] = lam
+            A_ub.append(row)
+            b_ub.append(float(D0[r]))
+
+    bounds = [(0, None)] * n_var
+
+    result = linprog(
+        c,
+        A_ub=np.asarray(A_ub, dtype=float),
+        b_ub=np.asarray(b_ub, dtype=float),
+        bounds=bounds,
+        method="highs",
+    )
+
+    return result, regions, items, beta, D0
+
+
+def _b4_allocation_table(result, regions, items):
+    """
+    Chuyển nghiệm 24 biến thành ma trận 6 vùng × 4 hạng mục.
+    """
+    X = result.x[:24].reshape(6, 4)
+
+    allocation = pd.DataFrame(
+        X,
+        columns=items,
+        index=regions,
+    )
+
+    allocation["Tổng vùng"] = allocation.sum(axis=1)
+
+    return X, allocation
 
 
 def page_4():
     hero(
-        "Bài 4 — LP phân bổ ngân sách số theo ngành-vùng",
-        "Giải bài toán phân bổ 50.000 tỷ VND cho 6 vùng và 4 hạng mục, đồng thời kiểm tra chi phí kinh tế của ràng buộc công bằng vùng.",
-        ["24 variables", "Regional fairness", "LP"],
+        "Bài 4 — Quy hoạch tuyến tính phân bổ ngân sách số theo ngành-vùng",
+        "Trình bày đầy đủ các mục 4.1-4.5: mô hình 24 biến, sàn-trần vùng, nhân lực số, công bằng vùng, so sánh PuLP-CVXPY và chi phí của công bằng.",
+        ["4.1-4.5", "Regional LP", "PuLP", "CVXPY", "Fairness"],
     )
-    fairness = st.toggle("Bật ràng buộc công bằng vùng C5", value=True)
-    res, regions, items, beta = solve_region_lp(fairness=fairness)
-    if not res.success:
-        st.error("Bài toán không khả thi với cấu hình này.")
-        return
-    X = res.x[:24].reshape(6, 4)
-    alloc = pd.DataFrame(X, columns=items, index=regions)
-    alloc["Tổng vùng"] = alloc.sum(axis=1)
-    Z = -res.fun
-    nofair, _, _, _ = solve_region_lp(fairness=False)
-    gap = (-nofair.fun) - Z if nofair.success else np.nan
 
-    kpi_cards(
+    regions, items, beta, D0 = region_beta_matrix()
+
+    # =====================================================
+    # 4.1. Bối cảnh Việt Nam
+    # =====================================================
+    st.markdown("## 4.1. Bối cảnh Việt Nam")
+
+    st.markdown(
+        """
+        Việt Nam có sáu vùng kinh tế - xã hội với mức độ phát triển và sẵn sàng số
+        khác nhau. Giả sử Chính phủ có **50.000 tỷ VND** để phân bổ cho bốn hạng mục:
+
+        - **I:** hạ tầng số;
+        - **D:** chuyển đổi số doanh nghiệp;
+        - **AI:** trí tuệ nhân tạo;
+        - **H:** nhân lực số.
+
+        Bài toán cần tối đa hóa mức tăng GDP kỳ vọng nhưng vẫn phải:
+        bảo đảm ngân sách tối thiểu cho từng vùng, tránh tập trung quá mức,
+        dành đủ nguồn lực cho nhân lực số và duy trì công bằng vùng miền.
+        """
+    )
+
+    # =====================================================
+    # 4.2. Mô hình toán học
+    # =====================================================
+    st.markdown("## 4.2. Mô hình toán học đầy đủ")
+
+    st.markdown("### Biến quyết định")
+    st.latex(
+        r"x_{j,r}="
+        r"\text{ngân sách phân bổ cho hạng mục }j"
+        r"\text{ tại vùng }r"
+    )
+
+    st.markdown("### Hàm mục tiêu")
+    st.latex(
+        r"\max Z="
+        r"\sum_{r=1}^{6}"
+        r"\sum_{j\in\{I,D,AI,H\}}"
+        r"\beta_{j,r}x_{j,r}"
+    )
+
+    st.markdown("### Các ràng buộc")
+
+    st.latex(
+        r"\sum_{r=1}^{6}\sum_jx_{j,r}"
+        r"\leq 50{,}000"
+    )
+
+    st.latex(
+        r"5{,}000"
+        r"\leq\sum_jx_{j,r}"
+        r"\leq12{,}000,\quad \forall r"
+    )
+
+    st.latex(
+        r"\sum_{r=1}^{6}x_{H,r}"
+        r"\geq12{,}000"
+    )
+
+    st.latex(
+        r"D_r+\gamma x_{D,r}"
+        r"\geq\lambda\max_r"
+        r"(D_r+\gamma x_{D,r})"
+    )
+
+    st.latex(
+        r"\gamma=0.002,\quad"
+        r"\lambda=0.7"
+    )
+
+    st.latex(
+        r"x_{j,r}\geq0"
+    )
+
+    st.info(
+        "Ràng buộc công bằng yêu cầu Digital Index sau đầu tư của mỗi vùng "
+        "đạt ít nhất 70% mức cao nhất trong sáu vùng."
+    )
+
+    # =====================================================
+    # 4.3. Bảng hệ số tác động biên
+    # =====================================================
+    st.markdown("## 4.3. Bảng hệ số tác động biên βⱼ,ᵣ")
+
+    beta_table = pd.DataFrame(
+        beta,
+        columns=items,
+    )
+
+    beta_table.insert(
+        0,
+        "Vùng",
+        regions,
+    )
+
+    beta_table["Digital Index ban đầu"] = D0
+
+    st.dataframe(
+        beta_table,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.caption(
+        "Hệ số β càng lớn thì một đơn vị ngân sách đầu tư vào hạng mục đó "
+        "tại vùng tương ứng tạo mức tăng GDP kỳ vọng càng cao."
+    )
+
+    # Giải mô hình chuẩn và mô hình không có công bằng
+    fair_result, _, _, _, _ = _b4_solve_scipy(
+        fairness=True,
+        total_budget=50000.0,
+    )
+
+    nofair_result, _, _, _, _ = _b4_solve_scipy(
+        fairness=False,
+        total_budget=50000.0,
+    )
+
+    if not fair_result.success:
+        st.error(
+            "Mô hình có ràng buộc công bằng vùng không khả thi. "
+            "Hãy kiểm tra lại các hệ số và giới hạn ngân sách."
+        )
+        return
+
+    X_fair, allocation_fair = _b4_allocation_table(
+        fair_result,
+        regions,
+        items,
+    )
+
+    z_fair = -float(fair_result.fun)
+
+    if nofair_result.success:
+        X_nofair, allocation_nofair = _b4_allocation_table(
+            nofair_result,
+            regions,
+            items,
+        )
+
+        z_nofair = -float(nofair_result.fun)
+        fairness_cost = z_nofair - z_fair
+    else:
+        X_nofair = None
+        allocation_nofair = None
+        z_nofair = np.nan
+        fairness_cost = np.nan
+
+    # =====================================================
+    # 4.4. Yêu cầu lập trình
+    # =====================================================
+    st.markdown("## 4.4. Yêu cầu lập trình")
+
+    tab441, tab442, tab443, tab444 = st.tabs(
         [
-            ("Z* GDP gain", f"{Z:,.0f}", "tỷ VND quy đổi theo hệ số"),
-            ("Vùng nhận nhiều nhất", alloc["Tổng vùng"].idxmax(), f"{alloc['Tổng vùng'].max():,.0f} tỷ"),
-            ("Hạng mục H toàn quốc", f"{alloc['H - Nhân lực số'].sum():,.0f}", "sàn 12.000 tỷ"),
-            ("Chi phí công bằng", f"{gap:,.0f}", "so với mô hình bỏ C5"),
+            "4.4.1 - PuLP",
+            "4.4.2 - CVXPY",
+            "4.4.3 - Heatmap",
+            "4.4.4 - Bỏ công bằng",
         ]
     )
-    c1, c2 = st.columns([1, 1])
-    with c1:
-        st.dataframe(alloc.reset_index().rename(columns={"index": "Vùng"}), use_container_width=True, hide_index=True)
-    with c2:
-        fig = px.imshow(
-            pd.DataFrame(X, columns=items, index=regions),
+
+    # -----------------------------------------------------
+    # 4.4.1
+    # -----------------------------------------------------
+    with tab441:
+        st.markdown(
+            "### Câu 4.4.1. Cài đặt mô hình bằng PuLP"
+        )
+
+        try:
+            import pulp
+
+            model = pulp.LpProblem(
+                "VN_Digital_Regional_Budget",
+                pulp.LpMaximize,
+            )
+
+            x = pulp.LpVariable.dicts(
+                "x",
+                (range(6), range(4)),
+                lowBound=0,
+            )
+
+            M = pulp.LpVariable(
+                "Digital_Index_Max",
+                lowBound=0,
+            )
+
+            model += pulp.lpSum(
+                beta[r, j] * x[r][j]
+                for r in range(6)
+                for j in range(4)
+            ), "Expected_GDP_Gain"
+
+            model += (
+                pulp.lpSum(
+                    x[r][j]
+                    for r in range(6)
+                    for j in range(4)
+                )
+                <= 50000
+            ), "C1_Total_Budget"
+
+            for r in range(6):
+                model += (
+                    pulp.lpSum(
+                        x[r][j]
+                        for j in range(4)
+                    )
+                    >= 5000
+                ), f"C2_Min_Region_{r+1}"
+
+                model += (
+                    pulp.lpSum(
+                        x[r][j]
+                        for j in range(4)
+                    )
+                    <= 12000
+                ), f"C3_Max_Region_{r+1}"
+
+            model += (
+                pulp.lpSum(
+                    x[r][3]
+                    for r in range(6)
+                )
+                >= 12000
+            ), "C4_Digital_Human"
+
+            gamma = 0.002
+            lam = 0.7
+
+            for r in range(6):
+                model += (
+                    D0[r] + gamma * x[r][1]
+                    <= M
+                ), f"C5a_Max_Index_{r+1}"
+
+                model += (
+                    D0[r] + gamma * x[r][1]
+                    >= lam * M
+                ), f"C5b_Fairness_{r+1}"
+
+            solver = pulp.PULP_CBC_CMD(
+                msg=False
+            )
+
+            model.solve(
+                solver
+            )
+
+            pulp_status = pulp.LpStatus[
+                model.status
+            ]
+
+            X_pulp = np.array(
+                [
+                    [
+                        x[r][j].value()
+                        for j in range(4)
+                    ]
+                    for r in range(6)
+                ],
+                dtype=float,
+            )
+
+            z_pulp = float(
+                pulp.value(
+                    model.objective
+                )
+            )
+
+            pulp_table = pd.DataFrame(
+                X_pulp,
+                columns=items,
+            )
+
+            pulp_table.insert(
+                0,
+                "Vùng",
+                regions,
+            )
+
+            pulp_table["Tổng vùng"] = (
+                X_pulp.sum(axis=1)
+            )
+
+            kpi_cards(
+                [
+                    (
+                        "Trạng thái",
+                        pulp_status,
+                        "CBC solver",
+                    ),
+                    (
+                        "Z* PuLP",
+                        f"{z_pulp:,.2f}",
+                        "GDP gain kỳ vọng",
+                    ),
+                    (
+                        "Tổng ngân sách",
+                        f"{X_pulp.sum():,.0f}",
+                        "tỷ VND",
+                    ),
+                    (
+                        "Nhân lực số",
+                        f"{X_pulp[:, 3].sum():,.0f}",
+                        "tỷ VND",
+                    ),
+                ]
+            )
+
+            st.dataframe(
+                pulp_table,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            comparison_solver = pd.DataFrame(
+                {
+                    "Chỉ tiêu": [
+                        "Giá trị mục tiêu",
+                        "Tổng ngân sách",
+                        "Sai lệch phân bổ lớn nhất",
+                    ],
+                    "SciPy": [
+                        z_fair,
+                        X_fair.sum(),
+                        0.0,
+                    ],
+                    "PuLP": [
+                        z_pulp,
+                        X_pulp.sum(),
+                        np.max(
+                            np.abs(
+                                X_pulp - X_fair
+                            )
+                        ),
+                    ],
+                }
+            )
+
+            st.markdown(
+                "#### So sánh nghiệm PuLP và SciPy"
+            )
+
+            st.dataframe(
+                comparison_solver,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        except ModuleNotFoundError:
+            st.warning(
+                "Môi trường chưa cài PuLP. Trang vẫn hiển thị nghiệm SciPy. "
+                "Hãy thêm `pulp>=2.7` vào requirements.txt."
+            )
+
+            st.dataframe(
+                allocation_fair
+                .reset_index()
+                .rename(
+                    columns={"index": "Vùng"}
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        with st.expander(
+            "Xem mã PuLP rút gọn"
+        ):
+            st.code(
+                """model = pulp.LpProblem(
+    "RegionalBudget",
+    pulp.LpMaximize
+)
+
+x = pulp.LpVariable.dicts(
+    "x",
+    (range(6), range(4)),
+    lowBound=0
+)
+
+model += pulp.lpSum(
+    beta[r,j] * x[r][j]
+    for r in range(6)
+    for j in range(4)
+)
+
+model.solve(
+    pulp.PULP_CBC_CMD(msg=False)
+)""",
+                language="python",
+            )
+
+    # -----------------------------------------------------
+    # 4.4.2
+    # -----------------------------------------------------
+    with tab442:
+        st.markdown(
+            "### Câu 4.4.2. Cài đặt lại bằng CVXPY và so sánh"
+        )
+
+        try:
+            import cvxpy as cp
+
+            X = cp.Variable(
+                (6, 4),
+                nonneg=True,
+            )
+
+            M = cp.Variable(
+                nonneg=True,
+            )
+
+            constraints = [
+                cp.sum(X) <= 50000,
+                cp.sum(X[:, 3]) >= 12000,
+            ]
+
+            gamma = 0.002
+            lam = 0.7
+
+            for r in range(6):
+                constraints.extend(
+                    [
+                        cp.sum(X[r, :]) >= 5000,
+                        cp.sum(X[r, :]) <= 12000,
+                        D0[r] + gamma * X[r, 1] <= M,
+                        D0[r] + gamma * X[r, 1] >= lam * M,
+                    ]
+                )
+
+            objective = cp.Maximize(
+                cp.sum(
+                    cp.multiply(
+                        beta,
+                        X,
+                    )
+                )
+            )
+
+            problem = cp.Problem(
+                objective,
+                constraints,
+            )
+
+            problem.solve(
+                solver=cp.CLARABEL,
+                verbose=False,
+            )
+
+            if X.value is None:
+                problem.solve(
+                    solver=cp.SCS,
+                    verbose=False,
+                )
+
+            if X.value is None:
+                st.error(
+                    "CVXPY không trả về nghiệm."
+                )
+            else:
+                X_cvxpy = np.asarray(
+                    X.value,
+                    dtype=float,
+                )
+
+                z_cvxpy = float(
+                    problem.value
+                )
+
+                cvxpy_table = pd.DataFrame(
+                    X_cvxpy,
+                    columns=items,
+                )
+
+                cvxpy_table.insert(
+                    0,
+                    "Vùng",
+                    regions,
+                )
+
+                cvxpy_table["Tổng vùng"] = (
+                    X_cvxpy.sum(axis=1)
+                )
+
+                solver_compare = pd.DataFrame(
+                    {
+                        "Chỉ tiêu": [
+                            "Z*",
+                            "Tổng phân bổ",
+                            "Sai lệch phân bổ lớn nhất",
+                        ],
+                        "SciPy": [
+                            z_fair,
+                            X_fair.sum(),
+                            0.0,
+                        ],
+                        "CVXPY": [
+                            z_cvxpy,
+                            X_cvxpy.sum(),
+                            np.max(
+                                np.abs(
+                                    X_cvxpy - X_fair
+                                )
+                            ),
+                        ],
+                    }
+                )
+
+                kpi_cards(
+                    [
+                        (
+                            "Z* CVXPY",
+                            f"{z_cvxpy:,.2f}",
+                            "GDP gain",
+                        ),
+                        (
+                            "Z* SciPy",
+                            f"{z_fair:,.2f}",
+                            "GDP gain",
+                        ),
+                        (
+                            "Chênh lệch Z*",
+                            f"{abs(z_cvxpy-z_fair):,.6f}",
+                            "giữa hai solver",
+                        ),
+                        (
+                            "Tổng phân bổ",
+                            f"{X_cvxpy.sum():,.0f}",
+                            "tỷ VND",
+                        ),
+                    ]
+                )
+
+                st.dataframe(
+                    solver_compare,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                st.dataframe(
+                    cvxpy_table,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                st.info(
+                    "PuLP, CVXPY và SciPy có thể tạo cơ cấu phân bổ hơi khác "
+                    "khi tồn tại nhiều nghiệm tối ưu, nhưng giá trị mục tiêu phải gần nhau."
+                )
+
+        except ModuleNotFoundError:
+            st.warning(
+                "Chưa cài CVXPY. Thêm `cvxpy>=1.4` vào requirements.txt."
+            )
+
+        except Exception as exc:
+            st.warning(
+                f"CVXPY hoặc solver gặp lỗi: {exc}"
+            )
+
+    # -----------------------------------------------------
+    # 4.4.3
+    # -----------------------------------------------------
+    with tab443:
+        st.markdown(
+            "### Câu 4.4.3. Heatmap phân bổ tối ưu 6 vùng × 4 hạng mục"
+        )
+
+        heatmap_data = pd.DataFrame(
+            X_fair,
+            columns=items,
+            index=regions,
+        )
+
+        fig_heatmap = px.imshow(
+            heatmap_data,
             text_auto=".0f",
+            aspect="auto",
             color_continuous_scale="RdPu",
             template=PLOT_TEMPLATE,
             title="Heatmap phân bổ ngân sách tối ưu",
         )
-        fig.update_layout(height=520, margin=dict(l=10, r=10, t=54, b=10))
-        st.plotly_chart(fig, use_container_width=True)
+
+        fig_heatmap.update_layout(
+            height=560,
+            margin=dict(
+                l=10,
+                r=10,
+                t=54,
+                b=10,
+            ),
+        )
+
+        st.plotly_chart(
+            fig_heatmap,
+            use_container_width=True,
+        )
+
+        region_total = allocation_fair[
+            "Tổng vùng"
+        ].sort_values(
+            ascending=False
+        )
+
+        item_total = allocation_fair[
+            items
+        ].sum().sort_values(
+            ascending=False
+        )
+
+        kpi_cards(
+            [
+                (
+                    "Vùng nhận nhiều nhất",
+                    region_total.index[0],
+                    f"{region_total.iloc[0]:,.0f} tỷ VND",
+                ),
+                (
+                    "Vùng nhận ít nhất",
+                    region_total.index[-1],
+                    f"{region_total.iloc[-1]:,.0f} tỷ VND",
+                ),
+                (
+                    "Hạng mục lớn nhất",
+                    item_total.index[0],
+                    f"{item_total.iloc[0]:,.0f} tỷ VND",
+                ),
+                (
+                    "Tổng nhân lực số",
+                    f"{allocation_fair[items[3]].sum():,.0f}",
+                    "tỷ VND",
+                ),
+            ]
+        )
+
+        st.dataframe(
+            allocation_fair
+            .reset_index()
+            .rename(
+                columns={"index": "Vùng"}
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    # -----------------------------------------------------
+    # 4.4.4
+    # -----------------------------------------------------
+    with tab444:
+        st.markdown(
+            "### Câu 4.4.4. So sánh mô hình có và không có công bằng vùng"
+        )
+
+        if (
+            nofair_result.success
+            and allocation_nofair is not None
+        ):
+            region_compare = pd.DataFrame(
+                {
+                    "Vùng": regions,
+                    "Có công bằng": X_fair.sum(
+                        axis=1
+                    ),
+                    "Không công bằng": X_nofair.sum(
+                        axis=1
+                    ),
+                }
+            )
+
+            region_compare["Thay đổi"] = (
+                region_compare["Có công bằng"]
+                - region_compare["Không công bằng"]
+            )
+
+            fairness_rate = (
+                100 * fairness_cost / z_nofair
+                if z_nofair != 0
+                else 0
+            )
+
+            kpi_cards(
+                [
+                    (
+                        "Z* có công bằng",
+                        f"{z_fair:,.2f}",
+                        "GDP gain",
+                    ),
+                    (
+                        "Z* không công bằng",
+                        f"{z_nofair:,.2f}",
+                        "GDP gain",
+                    ),
+                    (
+                        "Chi phí công bằng",
+                        f"{fairness_cost:,.2f}",
+                        "GDP gain bị giảm",
+                    ),
+                    (
+                        "Tỷ lệ chi phí",
+                        f"{fairness_rate:.3f}%",
+                        "so với mô hình không C5",
+                    ),
+                ]
+            )
+
+            st.dataframe(
+                region_compare,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            compare_long = region_compare.melt(
+                id_vars="Vùng",
+                value_vars=[
+                    "Có công bằng",
+                    "Không công bằng",
+                ],
+                var_name="Mô hình",
+                value_name="Ngân sách",
+            )
+
+            fig_compare = px.bar(
+                compare_long,
+                x="Vùng",
+                y="Ngân sách",
+                color="Mô hình",
+                barmode="group",
+                template=PLOT_TEMPLATE,
+                title="Tổng ngân sách từng vùng trước và sau ràng buộc công bằng",
+            )
+
+            fig_compare.update_layout(
+                height=480,
+                margin=dict(
+                    l=10,
+                    r=10,
+                    t=54,
+                    b=10,
+                ),
+            )
+
+            st.plotly_chart(
+                fig_compare,
+                use_container_width=True,
+            )
+
+            st.info(
+                "Chi phí công bằng là phần giá trị mục tiêu phải đánh đổi "
+                "để ngăn ngân sách tập trung quá mức vào các vùng có lợi ích biên cao."
+            )
+
+        else:
+            st.warning(
+                "Không giải được mô hình bỏ ràng buộc công bằng."
+            )
+
+    # =====================================================
+    # Tải kết quả
+    # =====================================================
+    export_table = (
+        allocation_fair
+        .reset_index()
+        .rename(
+            columns={"index": "Vùng"}
+        )
+    )
+
+    st.download_button(
+        "Tải kết quả Bài 4 dạng CSV",
+        data=export_table.to_csv(
+            index=False
+        ).encode(
+            "utf-8-sig"
+        ),
+        file_name="bai4_lp_nganh_vung.csv",
+        mime="text/csv",
+        key="download_bai4",
+    )
+
+    # =====================================================
+    # 4.5. Câu hỏi thảo luận chính sách
+    # =====================================================
+    st.markdown(
+        "## 4.5. Câu hỏi thảo luận chính sách"
+    )
+
+    with st.expander(
+        "a) Nếu bỏ ràng buộc công bằng, vốn sẽ chảy về vùng nào?",
+        expanded=True,
+    ):
+        st.markdown(
+            "Vốn có xu hướng chảy về các vùng có hệ số tác động biên cao, "
+            "đặc biệt nơi có mức sẵn sàng số và AI tốt. Điều này làm tăng hiệu quả "
+            "ngắn hạn nhưng có thể làm sâu sắc thêm khoảng cách vùng."
+        )
+
+    with st.expander(
+        "b) Trần ngân sách vùng có phải là chính sách phân quyền không?",
+        expanded=True,
+    ):
+        st.markdown(
+            "Trần 12.000 tỷ VND ngăn một hoặc hai vùng hấp thụ phần lớn ngân sách. "
+            "Có thể xem đây là cơ chế chống tập trung và hỗ trợ phân quyền. "
+            "Chi phí hiệu quả được đo bằng phần Z* giảm so với mô hình không có giới hạn."
+        )
+
+    with st.expander(
+        "c) Tây Nguyên nên đầu tư AI ngay hay ưu tiên H và I trước?",
+        expanded=True,
+    ):
+        st.markdown(
+            "Do hệ số AI của Tây Nguyên tương đối thấp trong khi hệ số nhân lực và "
+            "hạ tầng cao hơn, mô hình thường ưu tiên H và I trước. Đây là trình tự "
+            "xây dựng năng lực hấp thụ: tạo nền tảng rồi mới mở rộng AI."
+        )
 
 
 def project_table():
