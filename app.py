@@ -390,72 +390,360 @@ def page_home():
 
 def page_1():
     hero(
-        "Bài 1 — Hàm sản xuất Cobb-Douglas mở rộng",
-        "Ước lượng TFP A_t, so sánh GDP dự báo với thực tế, phân rã tăng trưởng và mô phỏng GDP 2030 khi số hóa, AI và nhân lực số tăng.",
-        ["Growth accounting", "TFP", "MAPE", "Forecast 2030"],
+        "Bài 1 — Hàm sản xuất Cobb-Douglas mở rộng với AI và số hóa",
+        "Trình bày đầy đủ các mục 1.1-1.5: bối cảnh, mô hình, dữ liệu, bốn yêu cầu lập trình và thảo luận chính sách.",
+        ["1.1-1.5", "Growth accounting", "TFP", "MAPE", "GDP 2030"],
     )
 
-    st.markdown("<div class='section-card'>", unsafe_allow_html=True)
-    st.markdown("#### Tham số đàn hồi")
-    c1, c2, c3, c4 = st.columns(4)
-    alpha = c1.slider("α - Vốn K", 0.20, 0.45, 0.33, 0.01)
-    beta = c2.slider("β - Lao động L", 0.25, 0.55, 0.42, 0.01)
-    gamma = c3.slider("γ - Số hóa D", 0.02, 0.20, 0.10, 0.01)
-    delta = c4.slider("δ - AI", 0.02, 0.18, 0.08, 0.01)
-    theta = max(0.01, 1 - alpha - beta - gamma - delta)
-    st.caption(f"θ - Nhân lực số H được tự tính để CRS: θ = {theta:.2f}")
-    st.markdown("</div>", unsafe_allow_html=True)
+    # =====================================================
+    # 1.1. Bối cảnh Việt Nam
+    # =====================================================
+    st.markdown("## 1.1. Bối cảnh Việt Nam")
+    st.markdown(
+        """
+        GDP Việt Nam tăng từ **8.044,4 nghìn tỷ VND năm 2020** lên
+        **12.847,6 nghìn tỷ VND năm 2025**. Trong cùng giai đoạn, tỷ trọng
+        kinh tế số tăng từ **12,0%** lên **19,5% GDP**, năng lực AI được đại diện
+        bởi số doanh nghiệp công nghệ số tăng từ **55,6 nghìn** lên **80,1 nghìn**,
+        và tỷ lệ lao động qua đào tạo tăng từ **24,1%** lên **29,2%**.
 
+        Bài toán cần kiểm tra liệu hàm sản xuất Cobb-Douglas mở rộng có thể tái hiện
+        hợp lý sản lượng thực tế hay không, đồng thời xác định mức đóng góp của vốn,
+        lao động, số hóa, AI, nhân lực số và TFP vào tăng trưởng.
+        """
+    )
+
+    macro = load_macro().sort_values("year").reset_index(drop=True)
+    context_table = macro.loc[
+        macro["year"].isin([2024, 2025]),
+        [
+            "year",
+            "GDP_trillion_VND",
+            "GDP_growth_pct",
+            "digital_economy_share_GDP_pct",
+            "labor_productivity_million_VND",
+        ],
+    ].rename(
+        columns={
+            "year": "Năm",
+            "GDP_trillion_VND": "GDP (nghìn tỷ VND)",
+            "GDP_growth_pct": "Tăng trưởng GDP (%)",
+            "digital_economy_share_GDP_pct": "Kinh tế số/GDP (%)",
+            "labor_productivity_million_VND": "NSLĐ (triệu VND/người)",
+        }
+    )
+    st.dataframe(context_table, use_container_width=True, hide_index=True)
+
+    # =====================================================
+    # 1.2. Mô hình toán học
+    # =====================================================
+    st.markdown("## 1.2. Mô hình toán học")
+    st.latex(r"Y_t=A_tK_t^{\alpha}L_t^{\beta}D_t^{\gamma}AI_t^{\delta}H_t^{\theta}")
+    st.latex(r"\alpha+\beta+\gamma+\delta+\theta=1")
+    st.markdown(
+        """
+        Trong đó: **Y** là GDP; **A** là năng suất nhân tố tổng hợp (TFP);
+        **K** là vốn vật chất; **L** là lao động; **D** là mức độ số hóa;
+        **AI** là năng lực trí tuệ nhân tạo; **H** là vốn nhân lực số.
+        Các số mũ là độ co giãn của sản lượng đối với từng đầu vào.
+        """
+    )
+    st.latex(
+        r"\Delta\ln Y_t=\Delta\ln A_t+\alpha\Delta\ln K_t+"
+        r"\beta\Delta\ln L_t+\gamma\Delta\ln D_t+"
+        r"\delta\Delta\ln AI_t+\theta\Delta\ln H_t"
+    )
+
+    with st.expander("Điều chỉnh hệ số đàn hồi", expanded=True):
+        c1, c2, c3, c4 = st.columns(4)
+        alpha = c1.slider("α - Vốn K", 0.20, 0.45, 0.33, 0.01, key="b1_alpha")
+        beta = c2.slider("β - Lao động L", 0.25, 0.55, 0.42, 0.01, key="b1_beta")
+        gamma = c3.slider("γ - Số hóa D", 0.02, 0.20, 0.10, 0.01, key="b1_gamma")
+        delta = c4.slider("δ - AI", 0.02, 0.18, 0.08, 0.01, key="b1_delta")
+        theta = 1 - alpha - beta - gamma - delta
+        if theta <= 0:
+            st.error("Tổng α + β + γ + δ phải nhỏ hơn 1 để θ dương.")
+            st.stop()
+        st.success(
+            f"θ = {theta:.2f}; tổng hệ số = "
+            f"{alpha + beta + gamma + delta + theta:.2f} (lợi suất không đổi theo quy mô)."
+        )
+
+    # =====================================================
+    # 1.3. Dữ liệu Việt Nam 2020-2025
+    # =====================================================
+    st.markdown("## 1.3. Dữ liệu Việt Nam 2020-2025")
     years, Y, K, L, D, AI, H, A = compute_tfp(alpha, beta, gamma, delta, theta)
+    input_df = pd.DataFrame(
+        {
+            "Năm": years,
+            "Y - GDP (nghìn tỷ VND)": Y,
+            "K - Vốn tích lũy": K,
+            "L - Lao động (triệu)": L,
+            "D - Kinh tế số/GDP (%)": D,
+            "AI - DN số (nghìn)": AI,
+            "H - Lao động qua đào tạo (%)": H,
+        }
+    )
+    st.dataframe(input_df, use_container_width=True, hide_index=True)
+    st.caption(
+        "Hệ số mặc định theo đề: α=0,33; β=0,42; γ=0,10; δ=0,08; θ=0,07. "
+        "Các biến K, L, AI và H được dùng theo bảng dữ liệu trong đề bài."
+    )
+
+    # Các kết quả dùng chung cho 1.4 và 1.5
     A_mean = A.mean()
     Y_hat = A_mean * K**alpha * L**beta * D**gamma * AI**delta * H**theta
     mape = safe_mape(Y, Y_hat)
 
-    K2030 = K[-1] * (1.06**5)
-    L2030 = L[-1] * (1.006**5)
-    D2030 = 30
-    AI2030 = 100
-    H2030 = 35
-    A2030 = A[-1] * (1.012**5)
-    Y2030 = A2030 * K2030**alpha * L2030**beta * D2030**gamma * AI2030**delta * H2030**theta
-
-    kpi_cards(
-        [
-            ("TFP trung bình", f"{A_mean:,.2f}", "calibrated 2020-2025"),
-            ("MAPE dự báo", f"{mape:.2f}%", "Y thực tế vs Ŷ"),
-            ("GDP 2030 mô phỏng", f"{Y2030:,.0f} nghìn tỷ VND", "D=30%, AI=100, H=35%"),
-            ("θ auto", f"{theta:.2f}", "α+β+γ+δ+θ=1"),
-        ]
-    )
-
-    df = pd.DataFrame({"Năm": years, "Y thực tế": Y, "Y dự báo": Y_hat, "TFP_A_t": A})
-    c1, c2 = st.columns(2)
-    with c1:
-        st.plotly_chart(plot_line(df, "Năm", "TFP_A_t", "TFP A_t theo năm"), use_container_width=True)
-    with c2:
-        fig = px.line(df, x="Năm", y=["Y thực tế", "Y dự báo"], markers=True, template=PLOT_TEMPLATE, title="GDP thực tế và GDP dự báo")
-        fig.update_layout(height=420, margin=dict(l=10, r=10, t=54, b=10))
-        st.plotly_chart(fig, use_container_width=True)
-
-    contrib = {
-        "K": alpha * np.diff(np.log(K)),
-        "L": beta * np.diff(np.log(L)),
-        "D": gamma * np.diff(np.log(D)),
-        "AI": delta * np.diff(np.log(AI)),
-        "H": theta * np.diff(np.log(H)),
+    annual_contributions = {
+        "K - Vốn": alpha * np.diff(np.log(K)),
+        "L - Lao động": beta * np.diff(np.log(L)),
+        "D - Số hóa": gamma * np.diff(np.log(D)),
+        "AI - Năng lực AI": delta * np.diff(np.log(AI)),
+        "H - Nhân lực số": theta * np.diff(np.log(H)),
         "TFP": np.diff(np.log(A)),
     }
-    total_growth = np.diff(np.log(Y)).mean()
+    avg_log_growth = np.diff(np.log(Y)).mean()
     contrib_df = pd.DataFrame(
         {
-            "Yếu tố": list(contrib.keys()),
-            "Đóng góp bình quân log-point": [v.mean() for v in contrib.values()],
-            "Tỷ trọng trong tăng trưởng (%)": [v.mean() / total_growth * 100 for v in contrib.values()],
+            "Yếu tố": list(annual_contributions.keys()),
+            "Đóng góp bình quân (% log/năm)": [
+                100 * values.mean() for values in annual_contributions.values()
+            ],
+            "Tỷ trọng trong tăng trưởng (%)": [
+                100 * values.mean() / avg_log_growth
+                for values in annual_contributions.values()
+            ],
         }
     )
-    section("Phân rã tăng trưởng 2020-2025", "Bảng này dùng log-difference, nên tỷ trọng có thể vượt 100% hoặc âm nếu một thành phần kéo giảm tăng trưởng.")
-    st.dataframe(contrib_df, use_container_width=True, hide_index=True)
-    st.plotly_chart(plot_bar(contrib_df, "Yếu tố", "Tỷ trọng trong tăng trưởng (%)", "Đóng góp tăng trưởng theo yếu tố", text="Tỷ trọng trong tăng trưởng (%)"), use_container_width=True)
+
+    # Kịch bản 2030: đề yêu cầu cả K và L tăng 6%/năm
+    n_years = 5
+    K2030 = K[-1] * (1.06**n_years)
+    L2030 = L[-1] * (1.06**n_years)
+    D2030 = 30.0
+    AI2030 = 100.0
+    H2030 = 35.0
+    A2030 = A[-1] * (1.012**n_years)
+    Y2030 = (
+        A2030
+        * K2030**alpha
+        * L2030**beta
+        * D2030**gamma
+        * AI2030**delta
+        * H2030**theta
+    )
+    growth_2025_2030 = (Y2030 / Y[-1] - 1) * 100
+
+    # =====================================================
+    # 1.4. Yêu cầu lập trình
+    # =====================================================
+    st.markdown("## 1.4. Yêu cầu lập trình")
+    tab141, tab142, tab143, tab144 = st.tabs(
+        ["1.4.1 - TFP", "1.4.2 - Dự báo & MAPE", "1.4.3 - Phân rã", "1.4.4 - GDP 2030"]
+    )
+
+    with tab141:
+        st.markdown("### Câu 1.4.1. Ước lượng TFP Aₜ")
+        tfp_df = pd.DataFrame({"Năm": years, "TFP A_t": A})
+        c1, c2 = st.columns([1.1, 1])
+        with c1:
+            st.dataframe(tfp_df, use_container_width=True, hide_index=True)
+        with c2:
+            st.plotly_chart(
+                plot_line(tfp_df, "Năm", "TFP A_t", "TFP Aₜ giai đoạn 2020-2025"),
+                use_container_width=True,
+            )
+        tfp_cagr = ((A[-1] / A[0]) ** (1 / (len(A) - 1)) - 1) * 100
+        tfp_direction = "tăng" if A[-1] > A[0] else "giảm" if A[-1] < A[0] else "ổn định"
+        st.info(
+            f"TFP có xu hướng **{tfp_direction}** từ {A[0]:.3f} năm 2020 "
+            f"lên {A[-1]:.3f} năm 2025; tốc độ thay đổi bình quân khoảng "
+            f"**{tfp_cagr:.2f}%/năm**."
+        )
+        with st.expander("Xem mã Python cho câu 1.4.1"):
+            st.code(
+                """A = Y / (K**alpha * L**beta * D**gamma * AI**delta * H**theta)
+tfp_df = pd.DataFrame({'year': years, 'TFP_A_t': A})
+fig = px.line(tfp_df, x='year', y='TFP_A_t', markers=True)""",
+                language="python",
+            )
+
+    with tab142:
+        st.markdown("### Câu 1.4.2. GDP dự báo và MAPE")
+        forecast_df = pd.DataFrame(
+            {
+                "Năm": years,
+                "GDP thực tế": Y,
+                "GDP dự báo": Y_hat,
+                "Sai số tuyệt đối (%)": np.abs((Y - Y_hat) / Y) * 100,
+            }
+        )
+        kpi_cards(
+            [
+                ("A trung bình", f"{A_mean:.3f}", "trung bình 2020-2025"),
+                ("MAPE", f"{mape:.2f}%", "sai số phần trăm tuyệt đối bình quân"),
+                ("Sai số nhỏ nhất", f"{forecast_df['Sai số tuyệt đối (%)'].min():.2f}%", "theo năm"),
+                ("Sai số lớn nhất", f"{forecast_df['Sai số tuyệt đối (%)'].max():.2f}%", "theo năm"),
+            ]
+        )
+        st.dataframe(forecast_df, use_container_width=True, hide_index=True)
+        fig = px.line(
+            forecast_df,
+            x="Năm",
+            y=["GDP thực tế", "GDP dự báo"],
+            markers=True,
+            template=PLOT_TEMPLATE,
+            title="So sánh GDP thực tế và GDP dự báo",
+        )
+        fig.update_layout(height=430, margin=dict(l=10, r=10, t=54, b=10))
+        st.plotly_chart(fig, use_container_width=True)
+        st.info(
+            f"MAPE bằng **{mape:.2f}%**. Chỉ số này càng thấp thì mức khớp trong mẫu càng tốt; "
+            "tuy nhiên đây là phép hiệu chỉnh trên chính giai đoạn 2020-2025, chưa phải kiểm định dự báo ngoài mẫu."
+        )
+        with st.expander("Xem mã Python cho câu 1.4.2"):
+            st.code(
+                """A_mean = A.mean()
+Y_hat = A_mean * K**alpha * L**beta * D**gamma * AI**delta * H**theta
+MAPE = np.mean(np.abs((Y - Y_hat) / Y)) * 100""",
+                language="python",
+            )
+
+    with tab143:
+        st.markdown("### Câu 1.4.3. Phân rã tăng trưởng 2020-2025")
+        st.metric("Tăng trưởng GDP bình quân theo log", f"{100 * avg_log_growth:.2f}%/năm")
+        st.dataframe(
+            contrib_df.style.format(
+                {
+                    "Đóng góp bình quân (% log/năm)": "{:.3f}",
+                    "Tỷ trọng trong tăng trưởng (%)": "{:.2f}",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.plotly_chart(
+            plot_bar(
+                contrib_df,
+                "Yếu tố",
+                "Tỷ trọng trong tăng trưởng (%)",
+                "Tỷ trọng đóng góp vào tăng trưởng GDP",
+                text="Tỷ trọng trong tăng trưởng (%)",
+            ),
+            use_container_width=True,
+        )
+        st.caption(
+            "Tỷ trọng có thể âm hoặc vượt 100% khi một yếu tố kéo giảm tăng trưởng và các yếu tố khác bù đắp."
+        )
+        with st.expander("Xem mã Python cho câu 1.4.3"):
+            st.code(
+                """growth_Y = np.diff(np.log(Y))
+contribution_K = alpha * np.diff(np.log(K))
+contribution_L = beta * np.diff(np.log(L))
+contribution_D = gamma * np.diff(np.log(D))
+contribution_AI = delta * np.diff(np.log(AI))
+contribution_H = theta * np.diff(np.log(H))
+contribution_TFP = np.diff(np.log(A))""",
+                language="python",
+            )
+
+    with tab144:
+        st.markdown("### Câu 1.4.4. Mô phỏng GDP Việt Nam năm 2030")
+        scenario_df = pd.DataFrame(
+            {
+                "Biến": ["K", "L", "D", "AI", "H", "TFP A"],
+                "Năm 2025": [K[-1], L[-1], D[-1], AI[-1], H[-1], A[-1]],
+                "Kịch bản 2030": [K2030, L2030, D2030, AI2030, H2030, A2030],
+                "Giả định": [
+                    "Tăng 6%/năm",
+                    "Tăng 6%/năm",
+                    "Đạt 30% GDP",
+                    "100 nghìn DN",
+                    "Đạt 35%",
+                    "Tăng 1,2%/năm",
+                ],
+            }
+        )
+        kpi_cards(
+            [
+                ("GDP 2025", f"{Y[-1]:,.1f}", "nghìn tỷ VND"),
+                ("GDP 2030 mô phỏng", f"{Y2030:,.1f}", "nghìn tỷ VND"),
+                ("Tăng 2025-2030", f"{growth_2025_2030:.1f}%", "theo kịch bản đề bài"),
+                ("Tăng trưởng quy đổi", f"{((Y2030 / Y[-1]) ** (1/5) - 1) * 100:.2f}%/năm", "CAGR GDP"),
+            ]
+        )
+        st.dataframe(scenario_df, use_container_width=True, hide_index=True)
+        st.warning(
+            "Kịch bản 1.4.4 là mô phỏng có điều kiện. Kết quả phụ thuộc mạnh vào giả định cả vốn K và lao động L "
+            "đều tăng 6%/năm; đây không phải dự báo chính thức."
+        )
+        with st.expander("Xem mã Python cho câu 1.4.4"):
+            st.code(
+                """K2030 = K[-1] * 1.06**5
+L2030 = L[-1] * 1.06**5
+D2030, AI2030, H2030 = 30, 100, 35
+A2030 = A[-1] * 1.012**5
+Y2030 = A2030 * K2030**alpha * L2030**beta * D2030**gamma * AI2030**delta * H2030**theta""",
+                language="python",
+            )
+
+    # File kết quả cho người dùng tải từ web
+    result_export = forecast_df.merge(tfp_df, on="Năm")
+    st.download_button(
+        "Tải kết quả Bài 1 dạng CSV",
+        data=result_export.to_csv(index=False).encode("utf-8-sig"),
+        file_name="bai1_cobb_douglas_ket_qua.csv",
+        mime="text/csv",
+        key="download_bai1",
+    )
+
+    # =====================================================
+    # 1.5. Câu hỏi thảo luận chính sách
+    # =====================================================
+    st.markdown("## 1.5. Câu hỏi thảo luận chính sách")
+
+    cumulative_new = {
+        "số hóa D": gamma * np.log(D[-1] / D[0]),
+        "năng lực AI": delta * np.log(AI[-1] / AI[0]),
+        "nhân lực số H": theta * np.log(H[-1] / H[0]),
+    }
+    strongest_new = max(cumulative_new, key=cumulative_new.get)
+    digital_pp_required = (30 - D[-1]) / 5
+    digital_cagr_required = ((30 / D[-1]) ** (1 / 5) - 1) * 100
+
+    with st.expander("a) TFP tăng hay giảm và phản ánh điều gì?", expanded=True):
+        st.markdown(
+            f"TFP **{tfp_direction}** trong giai đoạn 2020-2025, từ **{A[0]:.3f}** "
+            f"lên **{A[-1]:.3f}**, tương ứng khoảng **{tfp_cagr:.2f}%/năm**. "
+            "Nếu TFP tăng, chất lượng tăng trưởng được cải thiện vì một phần sản lượng tăng thêm đến từ hiệu quả, "
+            "công nghệ và tổ chức sản xuất, không chỉ từ mở rộng vốn và lao động. Tuy nhiên, kết luận này phụ thuộc "
+            "vào cách đo D, AI, H và bộ hệ số đàn hồi giả định."
+        )
+
+    with st.expander("b) Trong D, AI và H, yếu tố nào đóng góp nhiều nhất?", expanded=True):
+        comparison_df = pd.DataFrame(
+            {
+                "Yếu tố mới": list(cumulative_new.keys()),
+                "Đóng góp log tích lũy 2020-2025": list(cumulative_new.values()),
+            }
+        ).sort_values("Đóng góp log tích lũy 2020-2025", ascending=False)
+        st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+        st.markdown(
+            f"Theo bộ hệ số và dữ liệu hiện tại, **{strongest_new}** đóng góp lớn nhất trong ba yếu tố mới. "
+            "Kết quả được quyết định đồng thời bởi tốc độ tăng của biến và độ co giãn gán cho biến đó; vì vậy "
+            "không nên diễn giải đây là quan hệ nhân quả đã được kiểm định."
+        )
+
+    with st.expander("c) Mục tiêu kinh tế số đạt 30% GDP năm 2030 có khả thi không?", expanded=True):
+        st.markdown(
+            f"Từ mức **{D[-1]:.1f}% năm 2025** lên **30% năm 2030**, tỷ trọng kinh tế số phải tăng trung bình "
+            f"khoảng **{digital_pp_required:.2f} điểm phần trăm/năm**, tương đương tăng **{digital_cagr_required:.2f}%/năm** "
+            "theo mức chỉ số. Mô hình cho thấy mục tiêu có thể được mô phỏng, nhưng để đánh giá khả thi cần bổ sung "
+            "các ràng buộc về ngân sách, năng lực nhân lực, hạ tầng dữ liệu, an ninh mạng, khả năng hấp thụ của doanh nghiệp, "
+            "chênh lệch vùng và độ trễ chính sách."
+        )
 
 
 def page_2():
