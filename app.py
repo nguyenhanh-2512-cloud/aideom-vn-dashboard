@@ -7624,126 +7624,1538 @@ result = linprog(
         )
 
 
-def page_10():
-    hero(
-        "Bài 10 — Quy hoạch ngẫu nhiên hai giai đoạn",
-        "Ra quyết định first-stage trước bất định, sau đó điều chỉnh bằng recourse theo 4 kịch bản kinh tế toàn cầu.",
-        ["Stochastic Programming", "First-stage", "Recourse"],
-    )
-    items = ["I", "D", "AI", "H"]
-    scenarios = ["s1 Lạc quan", "s2 Cơ sở", "s3 Bi quan", "s4 Khủng hoảng"]
-    prob = np.array([0.30, 0.45, 0.20, 0.05])
-    beta = np.array([1.00, 1.10, 1.25, 0.95])
-    beta_s = np.array([
-        [1.25, 1.35, 1.55, 1.05],
-        [1.00, 1.10, 1.25, 0.95],
-        [0.75, 0.85, 0.90, 1.00],
-        [0.40, 0.50, 0.55, 1.10],
-    ])
-    n = 4 + 4 * 4
-    c = np.zeros(n)
-    c[:4] = -beta
-    for s in range(4):
-        c[4 + s * 4 : 4 + (s + 1) * 4] = -prob[s] * beta_s[s]
+def _b10_parameters():
+    """
+    Tham số bài toán quy hoạch ngẫu nhiên hai giai đoạn.
 
-    A_ub, b_ub = [], []
-    row = np.zeros(n)
-    row[:4] = 1
+    x_j:
+        Quyết định đầu tư nền tảng trước khi biết kịch bản.
+
+    y_j^s:
+        Ngân sách điều chỉnh sau khi kịch bản s xảy ra.
+
+    Đơn vị ngân sách: tỷ VND.
+    """
+    items = [
+        "I - Hạ tầng số",
+        "D - Chuyển đổi số",
+        "AI - Trí tuệ nhân tạo",
+        "H - Nhân lực số",
+    ]
+
+    scenarios = [
+        "s1 - Lạc quan",
+        "s2 - Cơ sở",
+        "s3 - Bi quan",
+        "s4 - Khủng hoảng",
+    ]
+
+    probabilities = np.array(
+        [0.30, 0.45, 0.20, 0.05],
+        dtype=float,
+    )
+
+    world_growth = np.array(
+        [3.5, 2.8, 1.5, 0.2],
+        dtype=float,
+    )
+
+    fdi_vietnam = np.array(
+        [32, 27, 20, 12],
+        dtype=float,
+    )
+
+    export_growth = np.array(
+        [12, 8, 3, -5],
+        dtype=float,
+    )
+
+    # Hệ số tác động của đầu tư nền tảng
+    beta_first_stage = np.array(
+        [1.00, 1.10, 1.25, 0.95],
+        dtype=float,
+    )
+
+    # Hệ số tác động của ngân sách điều chỉnh theo kịch bản
+    beta_recourse = np.array(
+        [
+            [1.25, 1.35, 1.55, 1.05],
+            [1.00, 1.10, 1.25, 0.95],
+            [0.75, 0.85, 0.90, 1.00],
+            [0.40, 0.50, 0.55, 1.10],
+        ],
+        dtype=float,
+    )
+
+    return {
+        "items": items,
+        "scenarios": scenarios,
+        "probabilities": probabilities,
+        "world_growth": world_growth,
+        "fdi_vietnam": fdi_vietnam,
+        "export_growth": export_growth,
+        "beta_first_stage": beta_first_stage,
+        "beta_recourse": beta_recourse,
+    }
+
+
+def _b10_solve_stochastic_scipy(
+    fixed_x=None,
+):
+    """
+    Giải mô hình stochastic programming hai giai đoạn bằng SciPy/HiGHS.
+
+    Biến:
+    - x[0:4]: first-stage
+    - y[s,j]: recourse, tổng 16 biến
+
+    Tổng số biến: 20.
+    """
+    p = _b10_parameters()
+
+    probability = p["probabilities"]
+    beta_x = p["beta_first_stage"]
+    beta_y = p["beta_recourse"]
+
+    n_items = 4
+    n_scenarios = 4
+    n_variables = 20
+
+    # linprog tối thiểu hóa nên đổi dấu hàm mục tiêu
+    c = np.zeros(
+        n_variables,
+        dtype=float,
+    )
+
+    c[:n_items] = -beta_x
+
+    for s in range(n_scenarios):
+        start = n_items + s * n_items
+        end = start + n_items
+
+        c[start:end] = (
+            -probability[s]
+            * beta_y[s]
+        )
+
+    A_ub = []
+    b_ub = []
+
+    # C1. Ngân sách first-stage <= 65.000
+    row = np.zeros(
+        n_variables,
+        dtype=float,
+    )
+    row[:n_items] = 1.0
     A_ub.append(row)
-    b_ub.append(65000)
-    for s in range(4):
-        row = np.zeros(n)
-        row[4 + s * 4 : 4 + (s + 1) * 4] = 1
+    b_ub.append(65000.0)
+
+    # C2-C3. Mỗi kịch bản có recourse <=15.000
+    # và y_AI^s <= 0.5*x_H
+    for s in range(n_scenarios):
+        start = n_items + s * n_items
+
+        row = np.zeros(
+            n_variables,
+            dtype=float,
+        )
+        row[start:start + n_items] = 1.0
         A_ub.append(row)
-        b_ub.append(15000)
-        row = np.zeros(n)
-        row[4 + s * 4 + 2] = 1
+        b_ub.append(15000.0)
+
+        row = np.zeros(
+            n_variables,
+            dtype=float,
+        )
+
+        # y_AI là phần tử thứ 3 của mỗi vector y
+        row[start + 2] = 1.0
+
+        # x_H là phần tử thứ 4 của vector x
+        row[3] = -0.5
+
+        A_ub.append(row)
+        b_ub.append(0.0)
+
+    A_eq = None
+    b_eq = None
+
+    if fixed_x is not None:
+        fixed_x = np.asarray(
+            fixed_x,
+            dtype=float,
+        )
+
+        A_eq = np.zeros(
+            (4, n_variables),
+            dtype=float,
+        )
+
+        for j in range(4):
+            A_eq[j, j] = 1.0
+
+        b_eq = fixed_x
+
+    result = linprog(
+        c,
+        A_ub=np.asarray(
+            A_ub,
+            dtype=float,
+        ),
+        b_ub=np.asarray(
+            b_ub,
+            dtype=float,
+        ),
+        A_eq=A_eq,
+        b_eq=b_eq,
+        bounds=[
+            (0, None)
+        ] * n_variables,
+        method="highs",
+    )
+
+    return result
+
+
+def _b10_solve_stochastic_pulp():
+    """
+    Giải cùng mô hình bằng PuLP/CBC để đúng yêu cầu Pyomo/PuLP.
+    Nếu PuLP chưa cài, trả về None.
+    """
+    try:
+        import pulp
+    except ModuleNotFoundError:
+        return None
+
+    p = _b10_parameters()
+
+    items = p["items"]
+    scenarios = p["scenarios"]
+    probability = p["probabilities"]
+    beta_x = p["beta_first_stage"]
+    beta_y = p["beta_recourse"]
+
+    model = pulp.LpProblem(
+        "Vietnam_Two_Stage_Stochastic_Programming",
+        pulp.LpMaximize,
+    )
+
+    x = {
+        j: pulp.LpVariable(
+            f"x_{j}",
+            lowBound=0,
+        )
+        for j in range(4)
+    }
+
+    y = {
+        (s, j): pulp.LpVariable(
+            f"y_{s}_{j}",
+            lowBound=0,
+        )
+        for s in range(4)
+        for j in range(4)
+    }
+
+    model += (
+        pulp.lpSum(
+            beta_x[j] * x[j]
+            for j in range(4)
+        )
+        + pulp.lpSum(
+            probability[s]
+            * beta_y[s, j]
+            * y[(s, j)]
+            for s in range(4)
+            for j in range(4)
+        )
+    ), "Expected_Benefit"
+
+    model += (
+        pulp.lpSum(
+            x[j]
+            for j in range(4)
+        )
+        <= 65000
+    ), "C1_First_Stage_Budget"
+
+    for s in range(4):
+        model += (
+            pulp.lpSum(
+                y[(s, j)]
+                for j in range(4)
+            )
+            <= 15000
+        ), f"C2_Recourse_Budget_{s+1}"
+
+        model += (
+            y[(s, 2)]
+            <= 0.5 * x[3]
+        ), f"C3_AI_Depends_On_H_{s+1}"
+
+    try:
+        model.solve(
+            pulp.PULP_CBC_CMD(
+                msg=False
+            )
+        )
+    except Exception:
+        return None
+
+    status = pulp.LpStatus[
+        model.status
+    ]
+
+    if status != "Optimal":
+        return {
+            "status": status,
+            "objective": np.nan,
+            "x": None,
+            "y": None,
+        }
+
+    x_value = np.array(
+        [
+            x[j].value()
+            for j in range(4)
+        ],
+        dtype=float,
+    )
+
+    y_value = np.array(
+        [
+            [
+                y[(s, j)].value()
+                for j in range(4)
+            ]
+            for s in range(4)
+        ],
+        dtype=float,
+    )
+
+    return {
+        "status": status,
+        "objective": float(
+            pulp.value(
+                model.objective
+            )
+        ),
+        "x": x_value,
+        "y": y_value,
+        "items": items,
+        "scenarios": scenarios,
+    }
+
+
+def _b10_solve_expected_value():
+    """
+    Giải bài toán Expected Value (EV).
+
+    Dùng hệ số recourse trung bình:
+        beta_bar = sum_s p_s*beta_s
+
+    Biến:
+    - x[4]
+    - y_bar[4]
+    """
+    p = _b10_parameters()
+
+    probability = p["probabilities"]
+    beta_x = p["beta_first_stage"]
+    beta_y_bar = np.average(
+        p["beta_recourse"],
+        axis=0,
+        weights=probability,
+    )
+
+    # x[4] + y[4]
+    c = -np.r_[
+        beta_x,
+        beta_y_bar,
+    ]
+
+    A_ub = []
+    b_ub = []
+
+    # First-stage budget
+    row = np.zeros(
+        8,
+        dtype=float,
+    )
+    row[:4] = 1.0
+    A_ub.append(row)
+    b_ub.append(65000.0)
+
+    # Average recourse budget
+    row = np.zeros(
+        8,
+        dtype=float,
+    )
+    row[4:] = 1.0
+    A_ub.append(row)
+    b_ub.append(15000.0)
+
+    # y_AI <= 0.5*x_H
+    row = np.zeros(
+        8,
+        dtype=float,
+    )
+    row[6] = 1.0
+    row[3] = -0.5
+    A_ub.append(row)
+    b_ub.append(0.0)
+
+    result = linprog(
+        c,
+        A_ub=np.asarray(
+            A_ub,
+            dtype=float,
+        ),
+        b_ub=np.asarray(
+            b_ub,
+            dtype=float,
+        ),
+        bounds=[
+            (0, None)
+        ] * 8,
+        method="highs",
+    )
+
+    return result
+
+
+def _b10_solve_deterministic_scenario(
+    scenario_index,
+):
+    """
+    Wait-and-see: giải riêng một kịch bản khi đã biết chắc kịch bản xảy ra.
+
+    Biến:
+    - x[4]
+    - y[4]
+    """
+    p = _b10_parameters()
+
+    beta_x = p["beta_first_stage"]
+    beta_y = p["beta_recourse"][
+        scenario_index
+    ]
+
+    c = -np.r_[
+        beta_x,
+        beta_y,
+    ]
+
+    A_ub = []
+    b_ub = []
+
+    row = np.zeros(
+        8,
+        dtype=float,
+    )
+    row[:4] = 1.0
+    A_ub.append(row)
+    b_ub.append(65000.0)
+
+    row = np.zeros(
+        8,
+        dtype=float,
+    )
+    row[4:] = 1.0
+    A_ub.append(row)
+    b_ub.append(15000.0)
+
+    row = np.zeros(
+        8,
+        dtype=float,
+    )
+    row[6] = 1.0
+    row[3] = -0.5
+    A_ub.append(row)
+    b_ub.append(0.0)
+
+    return linprog(
+        c,
+        A_ub=np.asarray(
+            A_ub,
+            dtype=float,
+        ),
+        b_ub=np.asarray(
+            b_ub,
+            dtype=float,
+        ),
+        bounds=[
+            (0, None)
+        ] * 8,
+        method="highs",
+    )
+
+
+def _b10_calculate_metrics(
+    stochastic_result,
+    ev_result,
+):
+    """
+    Tính:
+    - RP: Recourse Problem
+    - EEV: Expected result of using EV solution
+    - VSS = RP - EEV
+    - WS: Wait-and-see
+    - EVPI = WS - RP
+    """
+    p = _b10_parameters()
+
+    probability = p["probabilities"]
+
+    rp = -float(
+        stochastic_result.fun
+    )
+
+    x_ev = ev_result.x[:4]
+
+    # Giữ x_EV cố định và tối ưu recourse theo từng kịch bản thật
+    eev_result = _b10_solve_stochastic_scipy(
+        fixed_x=x_ev
+    )
+
+    eev = (
+        -float(
+            eev_result.fun
+        )
+        if eev_result.success
+        else np.nan
+    )
+
+    wait_and_see_values = []
+    wait_and_see_x = []
+    wait_and_see_y = []
+
+    for s in range(4):
+        scenario_result = (
+            _b10_solve_deterministic_scenario(
+                s
+            )
+        )
+
+        wait_and_see_values.append(
+            -float(
+                scenario_result.fun
+            )
+        )
+
+        wait_and_see_x.append(
+            scenario_result.x[:4]
+        )
+
+        wait_and_see_y.append(
+            scenario_result.x[4:]
+        )
+
+    ws = float(
+        np.dot(
+            probability,
+            np.asarray(
+                wait_and_see_values
+            ),
+        )
+    )
+
+    vss = rp - eev
+    evpi = ws - rp
+
+    return {
+        "RP": rp,
+        "EEV": eev,
+        "VSS": vss,
+        "WS": ws,
+        "EVPI": evpi,
+        "x_EV": x_ev,
+        "EEV_result": eev_result,
+        "WS_values": wait_and_see_values,
+        "WS_x": np.asarray(
+            wait_and_see_x
+        ),
+        "WS_y": np.asarray(
+            wait_and_see_y
+        ),
+    }
+
+
+def _b10_solve_robust():
+    """
+    Robust optimization dạng max-min.
+
+    Biến:
+    - x[4]
+    - y[s,j] = 16
+    - z = lợi ích nhỏ nhất giữa bốn kịch bản
+
+    Mục tiêu:
+        max z
+    """
+    p = _b10_parameters()
+
+    beta_x = p["beta_first_stage"]
+    beta_y = p["beta_recourse"]
+
+    # Tổng 21 biến
+    n_variables = 21
+    z_index = 20
+
+    c = np.zeros(
+        n_variables,
+        dtype=float,
+    )
+
+    # Max z tương đương Min -z
+    c[z_index] = -1.0
+
+    A_ub = []
+    b_ub = []
+
+    # First-stage budget
+    row = np.zeros(
+        n_variables,
+        dtype=float,
+    )
+    row[:4] = 1.0
+    A_ub.append(row)
+    b_ub.append(65000.0)
+
+    for s in range(4):
+        start = 4 + s * 4
+
+        # Recourse budget
+        row = np.zeros(
+            n_variables,
+            dtype=float,
+        )
+        row[start:start + 4] = 1.0
+        A_ub.append(row)
+        b_ub.append(15000.0)
+
+        # y_AI^s <= 0.5*x_H
+        row = np.zeros(
+            n_variables,
+            dtype=float,
+        )
+        row[start + 2] = 1.0
         row[3] = -0.5
         A_ub.append(row)
-        b_ub.append(0)
+        b_ub.append(0.0)
 
-    res = linprog(c, A_ub=np.array(A_ub), b_ub=np.array(b_ub), bounds=[(0, None)] * n, method="highs")
-    if not res.success:
-        st.error("Không tìm được nghiệm tối ưu.")
+        # z <= beta*x + beta_s*y_s
+        row = np.zeros(
+            n_variables,
+            dtype=float,
+        )
+        row[:4] = -beta_x
+        row[start:start + 4] = -beta_y[s]
+        row[z_index] = 1.0
+        A_ub.append(row)
+        b_ub.append(0.0)
+
+    result = linprog(
+        c,
+        A_ub=np.asarray(
+            A_ub,
+            dtype=float,
+        ),
+        b_ub=np.asarray(
+            b_ub,
+            dtype=float,
+        ),
+        bounds=(
+            [(0, None)] * 20
+            + [(None, None)]
+        ),
+        method="highs",
+    )
+
+    return result
+
+
+def page_10():
+    hero(
+        "Bài 10 — Quy hoạch ngẫu nhiên hai giai đoạn dưới bất định",
+        "Trình bày đầy đủ các mục 10.1-10.6: first-stage, recourse, EV, SP, VSS, EVPI và robust optimization.",
+        ["10.1-10.6", "Stochastic LP", "VSS", "EVPI", "Robust"],
+    )
+
+    p = _b10_parameters()
+
+    items = p["items"]
+    scenarios = p["scenarios"]
+    probabilities = p["probabilities"]
+
+    stochastic_result = (
+        _b10_solve_stochastic_scipy()
+    )
+
+    if not stochastic_result.success:
+        st.error(
+            "Mô hình stochastic programming không khả thi."
+        )
         return
 
-    x = res.x[:4]
-    y = res.x[4:].reshape(4, 4)
-    first = pd.DataFrame({"Hạng mục": items, "First-stage x": x})
-    recourse = pd.DataFrame(y, columns=items)
-    recourse.insert(0, "Kịch bản", scenarios)
-    Z = -res.fun
+    x_sp = stochastic_result.x[:4]
 
-    kpi_cards(
+    y_sp = stochastic_result.x[
+        4:
+    ].reshape(
+        4,
+        4,
+    )
+
+    rp = -float(
+        stochastic_result.fun
+    )
+
+    # =====================================================
+    # 10.1. Bối cảnh Việt Nam
+    # =====================================================
+    st.markdown(
+        "## 10.1. Bối cảnh Việt Nam"
+    )
+
+    st.markdown(
+        """
+        Việt Nam có độ mở thương mại cao nên hiệu quả đầu tư số chịu ảnh hưởng mạnh
+        từ tăng trưởng thế giới, dòng vốn FDI và xuất khẩu.
+
+        Chính phủ phải quyết định **65.000 tỷ VND đầu tư nền tảng** trước khi biết
+        kịch bản kinh tế nào xảy ra. Sau đó, mỗi kịch bản cho phép sử dụng thêm
+        tối đa **15.000 tỷ VND ngân sách điều chỉnh**.
+        """
+    )
+
+    # =====================================================
+    # 10.2. Cấu trúc kịch bản
+    # =====================================================
+    st.markdown(
+        "## 10.2. Cấu trúc kịch bản"
+    )
+
+    scenario_table = pd.DataFrame(
+        {
+            "Kịch bản": scenarios,
+            "Tăng trưởng thế giới (%)": p[
+                "world_growth"
+            ],
+            "FDI Việt Nam (tỷ USD)": p[
+                "fdi_vietnam"
+            ],
+            "Xuất khẩu tăng (%)": p[
+                "export_growth"
+            ],
+            "Xác suất": probabilities,
+        }
+    )
+
+    st.dataframe(
+        scenario_table.style.format(
+            {
+                "Xác suất": "{:.2f}",
+            }
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # =====================================================
+    # 10.3. Mô hình toán học
+    # =====================================================
+    st.markdown(
+        "## 10.3. Mô hình toán học"
+    )
+
+    st.markdown(
+        "### Biến quyết định giai đoạn 1"
+    )
+
+    st.latex(
+        r"x_j="
+        r"\text{đầu tư nền tảng trước khi biết kịch bản}"
+    )
+
+    st.markdown(
+        "### Biến điều chỉnh giai đoạn 2"
+    )
+
+    st.latex(
+        r"y_j^s="
+        r"\text{ngân sách điều chỉnh sau khi kịch bản }s\text{ xảy ra}"
+    )
+
+    st.markdown(
+        "### Hàm mục tiêu kỳ vọng"
+    )
+
+    st.latex(
+        r"\max"
+        r"\left["
+        r"\sum_j\beta_jx_j"
+        r"+\sum_sp_s"
+        r"\sum_j\beta_j^sy_j^s"
+        r"\right]"
+    )
+
+    st.markdown(
+        "### Các ràng buộc"
+    )
+
+    st.latex(
+        r"\sum_jx_j"
+        r"\leq65{,}000"
+    )
+
+    st.latex(
+        r"\sum_jy_j^s"
+        r"\leq15{,}000,\quad\forall s"
+    )
+
+    st.latex(
+        r"y_{AI}^s"
+        r"\leq0.5x_H,\quad\forall s"
+    )
+
+    st.latex(
+        r"x_j,y_j^s\geq0"
+    )
+
+    # =====================================================
+    # 10.4. Hệ số theo kịch bản
+    # =====================================================
+    st.markdown(
+        "## 10.4. Hệ số tác động theo kịch bản"
+    )
+
+    coefficient_table = pd.DataFrame(
+        p["beta_recourse"],
+        columns=items,
+    )
+
+    coefficient_table.insert(
+        0,
+        "Kịch bản",
+        scenarios,
+    )
+
+    coefficient_table[
+        "Xác suất"
+    ] = probabilities
+
+    st.dataframe(
+        coefficient_table.style.format(
+            {"Xác suất": "{:.2f}"}
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    base_coefficient_table = pd.DataFrame(
+        {
+            "Hạng mục": items,
+            "β giai đoạn 1": p[
+                "beta_first_stage"
+            ],
+        }
+    )
+
+    st.dataframe(
+        base_coefficient_table,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # =====================================================
+    # 10.5. Yêu cầu lập trình
+    # =====================================================
+    st.markdown(
+        "## 10.5. Yêu cầu lập trình"
+    )
+
+    tab1051, tab1052, tab1053, tab1054 = st.tabs(
         [
-            ("Expected objective", f"{Z:,.0f}", "lợi ích kỳ vọng"),
-            ("First-stage lớn nhất", items[int(np.argmax(x))], f"{x.max():,.0f}"),
-            ("Dự phòng mỗi kịch bản", "15.000", "tỷ VND"),
-            ("Ràng buộc AI", "y_AI ≤ 0,5 x_H", "capacity link"),
+            "10.5.1 - SP PuLP/SciPy",
+            "10.5.2 - EV & deterministic",
+            "10.5.3 - VSS & EVPI",
+            "10.5.4 - Robust",
         ]
     )
-    c1, c2 = st.columns([0.9, 1.1])
-    with c1:
-        st.dataframe(first, use_container_width=True, hide_index=True)
-        st.dataframe(recourse, use_container_width=True, hide_index=True)
-    with c2:
-        fig = px.bar(first, x="Hạng mục", y="First-stage x", template=PLOT_TEMPLATE, title="Quyết định here-and-now")
-        fig.update_layout(height=430)
-        st.plotly_chart(fig, use_container_width=True)
 
+    # -----------------------------------------------------
+    # 10.5.1
+    # -----------------------------------------------------
+    with tab1051:
+        st.markdown(
+            "### Câu 10.5.1. Cài đặt mô hình stochastic programming"
+        )
 
-ACTION_LABELS = {
-    0: "a0 Truyền thống",
-    1: "a1 Cân bằng",
-    2: "a2 Số hóa nhanh",
-    3: "a3 AI dẫn dắt",
-    4: "a4 Bao trùm",
-}
+        first_stage_table = pd.DataFrame(
+            {
+                "Hạng mục": items,
+                "First-stage x": x_sp,
+            }
+        )
 
+        recourse_table = pd.DataFrame(
+            y_sp,
+            columns=items,
+        )
 
-@st.cache_data
-def train_q_learning(episodes=4000, seed=7):
-    rng = np.random.default_rng(seed)
-    Q = np.zeros((3, 3, 3, 3, 5))
-    shares = np.array(list(scenario_shares().values()))
-    shares = np.vstack([
-        np.array([0.70, 0.10, 0.10, 0.10]),
-        np.array([0.40, 0.25, 0.15, 0.20]),
-        np.array([0.25, 0.45, 0.15, 0.15]),
-        np.array([0.20, 0.20, 0.45, 0.15]),
-        np.array([0.30, 0.20, 0.10, 0.40]),
-    ])
+        recourse_table.insert(
+            0,
+            "Kịch bản",
+            scenarios,
+        )
 
-    rewards = []
-    for ep in range(episodes):
-        s = np.array([1, 1, 0, 1])
-        total = 0
-        eps = max(0.05, 1.0 - ep / (episodes * 0.65))
-        for t in range(10):
-            if rng.random() < eps:
-                a = rng.integers(0, 5)
-            else:
-                a = int(np.argmax(Q[tuple(s)]))
-            sh = shares[a]
-            g, d, ai, u = s
-            dgdp = 0.20 * sh[0] + 0.35 * sh[1] + 0.50 * sh[2] + 0.25 * sh[3] + rng.normal(0, 0.03)
-            dunemp = 0.50 * sh[2] - 0.62 * sh[3] - 0.10 * sh[1] + rng.normal(0, 0.02)
-            cyber = 0.55 * sh[2] + 0.20 * sh[1] - 0.25 * sh[3]
-            emission = 0.36 * sh[0] + 0.40 * sh[2] + 0.12 * sh[3]
-            r = 0.40 * dgdp - 0.25 * dunemp - 0.20 * cyber - 0.15 * emission
-            total += r
+        recourse_table[
+            "Tổng recourse"
+        ] = y_sp.sum(
+            axis=1
+        )
 
-            s2 = np.array([
-                np.clip(g + (dgdp > 0.22) - (dgdp < 0.08), 0, 2),
-                np.clip(d + (sh[1] > 0.30) - (sh[1] < 0.15), 0, 2),
-                np.clip(ai + (sh[2] > 0.30) - (sh[2] < 0.12), 0, 2),
-                np.clip(u + (dunemp > 0.10) - (dunemp < -0.05), 0, 2),
-            ]).astype(int)
+        kpi_cards(
+            [
+                (
+                    "RP/SP objective",
+                    f"{rp:,.2f}",
+                    "lợi ích kỳ vọng",
+                ),
+                (
+                    "Tổng first-stage",
+                    f"{x_sp.sum():,.0f}",
+                    "≤ 65.000",
+                ),
+                (
+                    "x_H nền tảng",
+                    f"{x_sp[3]:,.0f}",
+                    "hỗ trợ AI recourse",
+                ),
+                (
+                    "Hạng mục first-stage lớn nhất",
+                    items[
+                        int(
+                            np.argmax(
+                                x_sp
+                            )
+                        )
+                    ],
+                    f"{x_sp.max():,.0f}",
+                ),
+            ]
+        )
 
-            Q[tuple(s) + (a,)] += 0.10 * (r + 0.95 * Q[tuple(s2)].max() - Q[tuple(s) + (a,)])
-            s = s2
-        rewards.append(total)
-    return Q, pd.DataFrame({"Episode": np.arange(episodes), "Reward": rewards})
+        c1, c2 = st.columns(
+            [0.8, 1.2]
+        )
+
+        with c1:
+            st.markdown(
+                "#### First-stage"
+            )
+
+            st.dataframe(
+                first_stage_table,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        with c2:
+            st.markdown(
+                "#### Recourse theo kịch bản"
+            )
+
+            st.dataframe(
+                recourse_table,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        recourse_long = recourse_table.melt(
+            id_vars=[
+                "Kịch bản",
+                "Tổng recourse",
+            ],
+            value_vars=items,
+            var_name="Hạng mục",
+            value_name="Ngân sách",
+        )
+
+        fig_recourse = px.bar(
+            recourse_long,
+            x="Kịch bản",
+            y="Ngân sách",
+            color="Hạng mục",
+            barmode="stack",
+            template=PLOT_TEMPLATE,
+            title="Ngân sách điều chỉnh theo bốn kịch bản",
+        )
+
+        fig_recourse.update_layout(
+            height=480,
+            margin=dict(
+                l=10,
+                r=10,
+                t=54,
+                b=10,
+            ),
+        )
+
+        st.plotly_chart(
+            fig_recourse,
+            use_container_width=True,
+        )
+
+        pulp_result = (
+            _b10_solve_stochastic_pulp()
+        )
+
+        if (
+            pulp_result is not None
+            and pulp_result["x"] is not None
+        ):
+            solver_comparison = pd.DataFrame(
+                {
+                    "Chỉ tiêu": [
+                        "Objective",
+                        "Tổng first-stage",
+                        "Sai lệch x lớn nhất",
+                        "Sai lệch y lớn nhất",
+                    ],
+                    "SciPy": [
+                        rp,
+                        x_sp.sum(),
+                        0.0,
+                        0.0,
+                    ],
+                    "PuLP": [
+                        pulp_result[
+                            "objective"
+                        ],
+                        pulp_result[
+                            "x"
+                        ].sum(),
+                        np.max(
+                            np.abs(
+                                pulp_result[
+                                    "x"
+                                ]
+                                - x_sp
+                            )
+                        ),
+                        np.max(
+                            np.abs(
+                                pulp_result[
+                                    "y"
+                                ]
+                                - y_sp
+                            )
+                        ),
+                    ],
+                }
+            )
+
+            st.markdown(
+                "#### So sánh PuLP và SciPy"
+            )
+
+            st.dataframe(
+                solver_comparison,
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.warning(
+                "PuLP/CBC chưa chạy được. Trang vẫn dùng SciPy/HiGHS. "
+                "Kiểm tra `pulp>=2.7` trong requirements.txt."
+            )
+
+        with st.expander(
+            "Xem mã PuLP rút gọn"
+        ):
+            st.code(
+                """model = pulp.LpProblem(
+    "TwoStageSP",
+    pulp.LpMaximize
+)
+
+x = pulp.LpVariable.dicts(
+    "x",
+    range(4),
+    lowBound=0
+)
+
+y = pulp.LpVariable.dicts(
+    "y",
+    (range(4), range(4)),
+    lowBound=0
+)
+
+model += (
+    pulp.lpSum(beta[j]*x[j] for j in range(4))
+    + pulp.lpSum(
+        p[s]*beta_s[s,j]*y[s][j]
+        for s in range(4)
+        for j in range(4)
+    )
+)
+
+model.solve(
+    pulp.PULP_CBC_CMD(msg=False)
+)""",
+                language="python",
+            )
+
+    # -----------------------------------------------------
+    # 10.5.2
+    # -----------------------------------------------------
+    with tab1052:
+        st.markdown(
+            "### Câu 10.5.2. So sánh bốn lời giải xác định và lời giải EV"
+        )
+
+        deterministic_rows = []
+
+        for s in range(4):
+            scenario_result = (
+                _b10_solve_deterministic_scenario(
+                    s
+                )
+            )
+
+            deterministic_rows.append(
+                [
+                    scenarios[s],
+                    -float(
+                        scenario_result.fun
+                    ),
+                    *scenario_result.x[:4],
+                    *scenario_result.x[4:],
+                ]
+            )
+
+        deterministic_table = pd.DataFrame(
+            deterministic_rows,
+            columns=[
+                "Kịch bản",
+                "Objective",
+                "x_I",
+                "x_D",
+                "x_AI",
+                "x_H",
+                "y_I",
+                "y_D",
+                "y_AI",
+                "y_H",
+            ],
+        )
+
+        ev_result = (
+            _b10_solve_expected_value()
+        )
+
+        if not ev_result.success:
+            st.error(
+                "Không giải được bài toán Expected Value."
+            )
+            return
+
+        x_ev = ev_result.x[:4]
+        y_ev = ev_result.x[4:]
+
+        ev_table = pd.DataFrame(
+            {
+                "Hạng mục": items,
+                "x_EV": x_ev,
+                "y_EV trung bình": y_ev,
+                "x_SP": x_sp,
+                "Chênh lệch x_SP-x_EV": (
+                    x_sp - x_ev
+                ),
+            }
+        )
+
+        st.markdown(
+            "#### Bốn lời giải xác định"
+        )
+
+        st.dataframe(
+            deterministic_table,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.markdown(
+            "#### So sánh EV và SP"
+        )
+
+        st.dataframe(
+            ev_table.style.format(
+                {
+                    "x_EV": "{:.2f}",
+                    "y_EV trung bình": "{:.2f}",
+                    "x_SP": "{:.2f}",
+                    "Chênh lệch x_SP-x_EV": "{:+.2f}",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        comparison_long = ev_table.melt(
+            id_vars="Hạng mục",
+            value_vars=[
+                "x_EV",
+                "x_SP",
+            ],
+            var_name="Phương pháp",
+            value_name="First-stage",
+        )
+
+        fig_ev_sp = px.bar(
+            comparison_long,
+            x="Hạng mục",
+            y="First-stage",
+            color="Phương pháp",
+            barmode="group",
+            template=PLOT_TEMPLATE,
+            title="So sánh first-stage của EV và SP",
+        )
+
+        fig_ev_sp.update_layout(
+            height=460,
+            margin=dict(
+                l=10,
+                r=10,
+                t=54,
+                b=10,
+            ),
+        )
+
+        st.plotly_chart(
+            fig_ev_sp,
+            use_container_width=True,
+        )
+
+    # -----------------------------------------------------
+    # 10.5.3
+    # -----------------------------------------------------
+    with tab1053:
+        st.markdown(
+            "### Câu 10.5.3. Tính VSS và EVPI"
+        )
+
+        ev_result = (
+            _b10_solve_expected_value()
+        )
+
+        metrics = _b10_calculate_metrics(
+            stochastic_result,
+            ev_result,
+        )
+
+        metrics_table = pd.DataFrame(
+            {
+                "Chỉ tiêu": [
+                    "RP - Recourse Problem",
+                    "EEV - Expected result of EV",
+                    "VSS = RP - EEV",
+                    "WS - Wait and See",
+                    "EVPI = WS - RP",
+                ],
+                "Giá trị": [
+                    metrics["RP"],
+                    metrics["EEV"],
+                    metrics["VSS"],
+                    metrics["WS"],
+                    metrics["EVPI"],
+                ],
+            }
+        )
+
+        kpi_cards(
+            [
+                (
+                    "VSS",
+                    f"{metrics['VSS']:,.2f}",
+                    "RP - EEV",
+                ),
+                (
+                    "EVPI",
+                    f"{metrics['EVPI']:,.2f}",
+                    "WS - RP",
+                ),
+                (
+                    "EEV",
+                    f"{metrics['EEV']:,.2f}",
+                    "dùng quyết định EV",
+                ),
+                (
+                    "WS",
+                    f"{metrics['WS']:,.2f}",
+                    "thông tin hoàn hảo",
+                ),
+            ]
+        )
+
+        st.dataframe(
+            metrics_table.style.format(
+                {"Giá trị": "{:,.2f}"}
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        wait_and_see_table = pd.DataFrame(
+            {
+                "Kịch bản": scenarios,
+                "Xác suất": probabilities,
+                "Objective khi biết trước": metrics[
+                    "WS_values"
+                ],
+                "Đóng góp vào WS": (
+                    probabilities
+                    * np.asarray(
+                        metrics[
+                            "WS_values"
+                        ]
+                    )
+                ),
+            }
+        )
+
+        st.dataframe(
+            wait_and_see_table,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        if metrics["VSS"] >= -1e-6:
+            st.success(
+                "VSS không âm: việc mô hình hóa bất định tạo giá trị "
+                "so với chỉ sử dụng kịch bản trung bình."
+            )
+        else:
+            st.warning(
+                "VSS âm do sai số số học hoặc thiết lập EV chưa nhất quán; "
+                "cần kiểm tra lại mô hình."
+            )
+
+        st.info(
+            "EVPI là mức tối đa hợp lý mà nhà hoạch định có thể trả "
+            "để có thông tin hoàn hảo trước khi ra quyết định."
+        )
+
+    # -----------------------------------------------------
+    # 10.5.4
+    # -----------------------------------------------------
+    with tab1054:
+        st.markdown(
+            "### Câu 10.5.4. Robust optimization dạng max-min"
+        )
+
+        robust_result = (
+            _b10_solve_robust()
+        )
+
+        if not robust_result.success:
+            st.error(
+                "Mô hình robust không khả thi."
+            )
+        else:
+            x_robust = robust_result.x[:4]
+
+            y_robust = robust_result.x[
+                4:20
+            ].reshape(
+                4,
+                4,
+            )
+
+            worst_case_value = float(
+                robust_result.x[20]
+            )
+
+            robust_first_stage = pd.DataFrame(
+                {
+                    "Hạng mục": items,
+                    "SP kỳ vọng": x_sp,
+                    "Robust": x_robust,
+                    "Thay đổi": (
+                        x_robust - x_sp
+                    ),
+                }
+            )
+
+            robust_scenario_values = []
+
+            for s in range(4):
+                scenario_value = float(
+                    p[
+                        "beta_first_stage"
+                    ] @ x_robust
+                    + p[
+                        "beta_recourse"
+                    ][s] @ y_robust[s]
+                )
+
+                robust_scenario_values.append(
+                    scenario_value
+                )
+
+            robust_scenario_table = pd.DataFrame(
+                {
+                    "Kịch bản": scenarios,
+                    "Lợi ích robust": robust_scenario_values,
+                    "Recourse": y_robust.sum(
+                        axis=1
+                    ),
+                }
+            )
+
+            kpi_cards(
+                [
+                    (
+                        "Worst-case objective",
+                        f"{worst_case_value:,.2f}",
+                        "max-min",
+                    ),
+                    (
+                        "Robust ưu tiên",
+                        items[
+                            int(
+                                np.argmax(
+                                    x_robust
+                                )
+                            )
+                        ],
+                        f"{x_robust.max():,.0f}",
+                    ),
+                    (
+                        "Tổng first-stage",
+                        f"{x_robust.sum():,.0f}",
+                        "≤ 65.000",
+                    ),
+                    (
+                        "Khác SP",
+                        f"{np.abs(x_robust-x_sp).sum():,.0f}",
+                        "khoảng cách L1",
+                    ),
+                ]
+            )
+
+            st.dataframe(
+                robust_first_stage.style.format(
+                    {
+                        "SP kỳ vọng": "{:.2f}",
+                        "Robust": "{:.2f}",
+                        "Thay đổi": "{:+.2f}",
+                    }
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            st.dataframe(
+                robust_scenario_table,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            robust_long = robust_first_stage.melt(
+                id_vars="Hạng mục",
+                value_vars=[
+                    "SP kỳ vọng",
+                    "Robust",
+                ],
+                var_name="Mô hình",
+                value_name="First-stage",
+            )
+
+            fig_robust = px.bar(
+                robust_long,
+                x="Hạng mục",
+                y="First-stage",
+                color="Mô hình",
+                barmode="group",
+                template=PLOT_TEMPLATE,
+                title="So sánh SP kỳ vọng và robust max-min",
+            )
+
+            fig_robust.update_layout(
+                height=470,
+                margin=dict(
+                    l=10,
+                    r=10,
+                    t=54,
+                    b=10,
+                ),
+            )
+
+            st.plotly_chart(
+                fig_robust,
+                use_container_width=True,
+            )
+
+    # =====================================================
+    # Tải kết quả
+    # =====================================================
+    export_first_stage = pd.DataFrame(
+        {
+            "Hạng mục": items,
+            "First-stage_SP": x_sp,
+        }
+    )
+
+    st.download_button(
+        "Tải kết quả first-stage Bài 10",
+        data=export_first_stage.to_csv(
+            index=False
+        ).encode(
+            "utf-8-sig"
+        ),
+        file_name="bai10_first_stage_stochastic.csv",
+        mime="text/csv",
+        key="download_bai10",
+    )
+
+    # =====================================================
+    # 10.6. Câu hỏi thảo luận chính sách
+    # =====================================================
+    st.markdown(
+        "## 10.6. Câu hỏi thảo luận chính sách"
+    )
+
+    with st.expander(
+        "a) SP đầu tư H nhiều hơn hay ít hơn lời giải xác định? Vì sao?",
+        expanded=True,
+    ):
+        st.markdown(
+            "Nhân lực số có vai trò như một tài sản linh hoạt: H vừa tạo lợi ích trực tiếp "
+            "vừa mở rộng khả năng bổ sung AI trong giai đoạn recourse. Vì vậy, SP có thể duy trì "
+            "x_H cao hơn lời giải chỉ tối ưu cho một kịch bản thuận lợi."
+        )
+
+    with st.expander(
+        "b) VSS dương nói lên điều gì?",
+        expanded=True,
+    ):
+        st.markdown(
+            "VSS dương chứng minh việc sử dụng phân phối xác suất và cơ chế điều chỉnh "
+            "tạo ra quyết định tốt hơn so với chỉ tối ưu theo kịch bản trung bình."
+        )
+
+    with st.expander(
+        "c) Việt Nam có đang dưới đầu tư vào nhân lực số không?",
+        expanded=True,
+    ):
+        st.markdown(
+            "Nếu SP và robust đều phân bổ nhiều hơn cho H so với EV hoặc lời giải lạc quan, "
+            "đó là bằng chứng trong mô hình rằng nhân lực số có giá trị chống chịu trước cú sốc, "
+            "ngoài tác động tăng trưởng trực tiếp."
+        )
 
 
 def page_11():
