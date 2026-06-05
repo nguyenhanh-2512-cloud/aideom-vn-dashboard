@@ -316,7 +316,7 @@ def page_home():
     # -----------------------------------------------------
     # CSS riêng cho trang chủ
     # -----------------------------------------------------
-    st.markdown(
+    st.html(
         """
         <style>
         /* ---------- Khung tổng ---------- */
@@ -780,14 +780,13 @@ def page_home():
             }
         }
         </style>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
     # -----------------------------------------------------
     # Nội dung trang chủ
     # -----------------------------------------------------
-    st.markdown(
+    st.html(
         """
         <div class="aideom-home">
 
@@ -1131,10 +1130,8 @@ def page_home():
             </footer>
 
         </div>
-        """,
-        unsafe_allow_html=True,
+        """
     )
-
 
 def page_1():
     hero(
