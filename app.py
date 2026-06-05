@@ -4187,14 +4187,22 @@ def _b7_sample_pareto(
     fairness_lambda=0.68,
 ):
     """
-    Tạo tập nghiệm khả thi bằng lấy mẫu ngẫu nhiên có kiểm soát,
-    sau đó lọc nghiệm không bị trội.
+    Tạo nghiệm khả thi theo phương pháp xây dựng trực tiếp thay vì
+    lấy mẫu ngẫu nhiên rồi loại bỏ gần như toàn bộ nghiệm.
 
-    Lý do dùng lambda=0.68:
-    Với D0 hiện tại, gamma=0.002 và trần 12.000/vùng,
-    lambda=0.70 làm Tây Nguyên không thể đạt ngưỡng công bằng.
-    Dashboard dùng 0.68 để tập nghiệm khả thi tồn tại.
+    Nguyên nhân lỗi cũ:
+    - fairness_lambda=0.68 rất sát biên khả thi;
+    - Tây Nguyên và Trung du miền núi phía Bắc cần mức đầu tư D rất lớn;
+    - lấy mẫu Dirichlet ngẫu nhiên hầu như không tạo được nghiệm thỏa đồng thời
+      ràng buộc công bằng, sàn-trần vùng và H >= 12.000.
+
+    Hàm mới chủ động:
+    1. Tính mức D tối thiểu để đạt công bằng;
+    2. Sinh ngân sách vùng trong [5.000, 12.000];
+    3. Phân bổ D, H, I, AI sao cho mọi ràng buộc đều thỏa;
+    4. Lọc tập nghiệm Pareto.
     """
+
     rng = np.random.default_rng(seed)
 
     (
@@ -4207,11 +4215,133 @@ def _b7_sample_pareto(
         human_protection_coef,
     ) = _b7_parameters()
 
+    def allocate_bounded(
+        total,
+        lower,
+        upper,
+    ):
+        """
+        Phân bổ một tổng cố định trong khoảng lower <= x <= upper.
+        """
+        lower = np.asarray(
+            lower,
+            dtype=float,
+        )
+
+        upper = np.asarray(
+            upper,
+            dtype=float,
+        )
+
+        x = lower.copy()
+
+        remaining = float(
+            total - x.sum()
+        )
+
+        if remaining < -1e-7:
+            return None
+
+        if total > upper.sum() + 1e-7:
+            return None
+
+        for _ in range(100):
+            if remaining <= 1e-8:
+                break
+
+            capacity = upper - x
+
+            active = np.where(
+                capacity > 1e-10
+            )[0]
+
+            if len(active) == 0:
+                break
+
+            weights = rng.dirichlet(
+                np.ones(
+                    len(active)
+                )
+            )
+
+            proposed = (
+                remaining
+                * weights
+            )
+
+            added = np.minimum(
+                proposed,
+                capacity[active],
+            )
+
+            x[active] += added
+
+            remaining -= float(
+                added.sum()
+            )
+
+        if remaining > 1e-5:
+            return None
+
+        return x
+
     accepted_rows = []
     accepted_matrices = []
 
+    # Mức Digital Index cao nhất ban đầu là 82.
+    # Giữ M=82 giúp ràng buộc fairness_lambda=0.68 khả thi.
+    target_max_index = float(
+        np.max(D0)
+    )
+
+    gamma = 0.002
+
+    # Mức đầu tư D tối thiểu để từng vùng đạt lambda*M
+    digital_lower = np.maximum(
+        0.0,
+        (
+            fairness_lambda
+            * target_max_index
+            - D0
+        )
+        / gamma,
+    )
+
+    # Mức đầu tư D tối đa để không vượt quá M
+    digital_upper_global = np.maximum(
+        digital_lower,
+        (
+            target_max_index
+            - D0
+        )
+        / gamma,
+    )
+
+    # Ngân sách tối thiểu vùng phải đủ chứa D tối thiểu
+    region_lower = np.maximum(
+        5000.0,
+        digital_lower,
+    )
+
+    region_upper = np.full(
+        6,
+        12000.0,
+    )
+
+    if region_lower.sum() > 50000:
+        empty = pd.DataFrame(
+            columns=[
+                "Growth",
+                "Inequality",
+                "Emission",
+                "DataRisk",
+                "FairnessRatio",
+            ]
+        )
+        return empty, []
+
     attempts = 0
-    max_attempts = n_samples * 250
+    max_attempts = n_samples * 20
 
     while (
         len(accepted_rows) < n_samples
@@ -4219,45 +4349,145 @@ def _b7_sample_pareto(
     ):
         attempts += 1
 
-        # Tổng ngân sách 50.000; mỗi vùng 5.000-12.000
-        region_budget = (
-            rng.dirichlet(
-                np.ones(6)
-            )
-            * 50000
+        # -------------------------------------------------
+        # Bước 1. Sinh tổng ngân sách từng vùng
+        # -------------------------------------------------
+        region_budget = allocate_bounded(
+            total=50000.0,
+            lower=region_lower,
+            upper=region_upper,
         )
 
-        if np.any(
-            region_budget < 5000
+        if region_budget is None:
+            continue
+
+        # -------------------------------------------------
+        # Bước 2. Phân bổ chuyển đổi số D
+        # -------------------------------------------------
+        digital_upper = np.minimum(
+            digital_upper_global,
+            region_budget,
+        )
+
+        min_digital_total = float(
+            digital_lower.sum()
+        )
+
+        # Phải chừa tối thiểu 12.000 cho nhân lực H
+        max_digital_total = min(
+            float(
+                digital_upper.sum()
+            ),
+            50000.0 - 12000.0,
+        )
+
+        if (
+            max_digital_total
+            < min_digital_total
         ):
             continue
 
-        if np.any(
-            region_budget > 12000
-        ):
+        digital_total = (
+            min_digital_total
+            + rng.beta(
+                1.5,
+                3.0,
+            )
+            * (
+                max_digital_total
+                - min_digital_total
+            )
+        )
+
+        x_digital = allocate_bounded(
+            total=digital_total,
+            lower=digital_lower,
+            upper=digital_upper,
+        )
+
+        if x_digital is None:
             continue
 
-        # Phân bổ bốn hạng mục trong từng vùng
-        X = np.vstack(
+        remaining_after_digital = (
+            region_budget
+            - x_digital
+        )
+
+        # -------------------------------------------------
+        # Bước 3. Phân bổ nhân lực H
+        # -------------------------------------------------
+        max_human_total = float(
+            remaining_after_digital.sum()
+        )
+
+        if max_human_total < 12000.0:
+            continue
+
+        human_total = (
+            12000.0
+            + rng.beta(
+                1.5,
+                3.0,
+            )
+            * (
+                max_human_total
+                - 12000.0
+            )
+        )
+
+        x_human = allocate_bounded(
+            total=human_total,
+            lower=np.zeros(6),
+            upper=remaining_after_digital,
+        )
+
+        if x_human is None:
+            continue
+
+        # -------------------------------------------------
+        # Bước 4. Phần còn lại chia cho I và AI
+        # -------------------------------------------------
+        remaining_for_i_ai = (
+            remaining_after_digital
+            - x_human
+        )
+
+        infrastructure_share = rng.beta(
+            1.4,
+            1.4,
+            size=6,
+        )
+
+        x_infrastructure = (
+            remaining_for_i_ai
+            * infrastructure_share
+        )
+
+        x_ai = (
+            remaining_for_i_ai
+            - x_infrastructure
+        )
+
+        X = np.column_stack(
             [
-                rng.dirichlet(
-                    np.array(
-                        [1.2, 1.4, 1.0, 1.5]
-                    )
-                )
-                * budget
-                for budget in region_budget
+                x_infrastructure,
+                x_digital,
+                x_ai,
+                x_human,
             ]
         )
 
-        # Tổng đầu tư nhân lực số >= 12.000
-        if X[:, 3].sum() < 12000:
-            continue
+        # -------------------------------------------------
+        # Bước 5. Kiểm tra toàn bộ ràng buộc
+        # -------------------------------------------------
+        regional_totals = X.sum(
+            axis=1
+        )
 
-        # Ràng buộc công bằng Digital Index
         digital_after = (
             D0
-            + 0.002 * X[:, 1]
+            + gamma
+            * X[:, 1]
         )
 
         fairness_ratio = float(
@@ -4268,7 +4498,27 @@ def _b7_sample_pareto(
             )
         )
 
-        if fairness_ratio < fairness_lambda:
+        feasible = (
+            abs(
+                X.sum()
+                - 50000.0
+            )
+            <= 1e-4
+            and np.all(
+                regional_totals
+                >= 5000.0 - 1e-5
+            )
+            and np.all(
+                regional_totals
+                <= 12000.0 + 1e-5
+            )
+            and X[:, 3].sum()
+            >= 12000.0 - 1e-5
+            and fairness_ratio
+            >= fairness_lambda - 1e-8
+        )
+
+        if not feasible:
             continue
 
         (
@@ -4347,11 +4597,12 @@ def _b7_sample_pareto(
     pareto_matrices = [
         accepted_matrices[i]
         for i, is_pareto
-        in enumerate(pareto_mask)
+        in enumerate(
+            pareto_mask
+        )
         if is_pareto
     ]
 
-    # Chuẩn hóa để chọn nghiệm thỏa hiệp
     pareto_df[
         "Growth_norm"
     ] = minmax(
@@ -4380,6 +4631,7 @@ def _b7_sample_pareto(
         pareto_df,
         pareto_matrices,
     )
+
 
 
 def _b7_compromise_score(
