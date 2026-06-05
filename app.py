@@ -1136,7 +1136,6 @@ def page_home():
     )
 
 
-
 def page_1():
     hero(
         "Bài 1 — Hàm sản xuất Cobb-Douglas mở rộng với AI và số hóa",
