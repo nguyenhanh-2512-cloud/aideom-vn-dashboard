@@ -5070,10 +5070,7 @@ model.solve(
 
 
 def _b6_prepare_data():
-    """
-    Chuẩn bị dữ liệu, danh sách tiêu chí, loại tiêu chí
-    và bộ trọng số chuyên gia cho Bài 6.
-    """
+    """Chuẩn bị dữ liệu, tiêu chí, loại tiêu chí và trọng số chuyên gia."""
     df = load_regions().copy()
 
     criteria = [
@@ -5087,7 +5084,6 @@ def _b6_prepare_data():
         "gini_coef",
     ]
 
-    # 7 tiêu chí lợi ích và 1 tiêu chí chi phí
     is_benefit = [
         True,
         True,
@@ -5101,14 +5097,14 @@ def _b6_prepare_data():
 
     expert_weights = np.array(
         [
-            0.10,  # GRDP/người
-            0.10,  # FDI
-            0.15,  # Digital Index
-            0.20,  # AI readiness
-            0.15,  # Lao động qua đào tạo
-            0.15,  # R&D intensity
-            0.05,  # Internet
-            0.10,  # Gini
+            0.10,
+            0.10,
+            0.15,
+            0.20,
+            0.15,
+            0.15,
+            0.05,
+            0.10,
         ],
         dtype=float,
     )
@@ -5116,56 +5112,9 @@ def _b6_prepare_data():
     return df, criteria, is_benefit, expert_weights
 
 
-def _b6_entropy_weights(df, criteria):
-    """
-    Tính trọng số Entropy sau khi chuyển tiêu chí Gini
-    về hướng càng lớn càng tốt.
-    """
-    X = df[criteria].astype(float).copy()
-
-    for col in criteria[:-1]:
-        X[col] = minmax(X[col])
-
-    # Gini là tiêu chí chi phí
-    X[criteria[-1]] = reverse_minmax(X[criteria[-1]])
-
-    return entropy_weights_positive(
-        X.to_numpy(dtype=float)
-    )
-
-
-def _b6_rank_result(df, score, score_name):
-    """
-    Tạo bảng xếp hạng TOPSIS.
-    """
-    result = pd.DataFrame(
-        {
-            "Vùng": df["region_name_vi"],
-            score_name: score,
-        }
-    ).sort_values(
-        score_name,
-        ascending=False,
-    )
-
-    result["Xếp hạng"] = np.arange(
-        1,
-        len(result) + 1,
-    )
-
-    return result
-
-
-def page_6():
-    hero(
-        "Bài 6 — TOPSIS xếp hạng 6 vùng kinh tế theo ưu tiên đầu tư AI",
-        "Trình bày đầy đủ các mục 6.1-6.5: lý thuyết TOPSIS, trọng số chuyên gia, Entropy, độ nhạy AI readiness và AHP.",
-        ["6.1-6.5", "TOPSIS", "Entropy", "AHP", "Regional AI"],
-    )
-
-    df, criteria, is_benefit, expert_weights = _b6_prepare_data()
-
-    criterion_labels = {
+def _b6_labels():
+    """Nhãn tiếng Việt của các tiêu chí."""
+    return {
         "grdp_per_capita_million_VND": "GRDP/người",
         "fdi_registered_billion_USD": "FDI đăng ký",
         "digital_index_0_100": "Digital Index",
@@ -5176,27 +5125,272 @@ def page_6():
         "gini_coef": "Gini",
     }
 
+
+def _b6_entropy_weights(df, criteria, is_benefit):
+    """
+    Tính trọng số Entropy.
+
+    Trước khi tính Entropy, toàn bộ tiêu chí được chuyển về hướng
+    giá trị lớn hơn là tốt hơn và chuẩn hóa min-max.
+    """
+    transformed = pd.DataFrame(index=df.index)
+
+    for criterion, benefit in zip(criteria, is_benefit):
+        if benefit:
+            transformed[criterion] = minmax(df[criterion])
+        else:
+            transformed[criterion] = reverse_minmax(df[criterion])
+
+    weights = entropy_weights_positive(
+        transformed.to_numpy(dtype=float)
+    )
+
+    return weights, transformed
+
+
+def _b6_rank_result(df, scores, score_name):
+    """Tạo bảng điểm và thứ hạng."""
+    result = pd.DataFrame(
+        {
+            "Vùng": df["region_name_vi"],
+            score_name: np.asarray(scores, dtype=float),
+        }
+    )
+
+    result["Xếp hạng"] = (
+        result[score_name]
+        .rank(
+            ascending=False,
+            method="min",
+        )
+        .astype(int)
+    )
+
+    return result.sort_values(
+        ["Xếp hạng", score_name],
+        ascending=[True, False],
+    ).reset_index(drop=True)
+
+
+def _b6_ahp_pairwise_matrix():
+    """
+    Ma trận so sánh cặp AHP minh họa theo thang Saaty.
+
+    Thứ tự:
+    GRDP, FDI, Digital, AI, Lao động, R&D, Internet, Gini.
+
+    Ma trận được nhập trực tiếp từ các đánh giá cặp, không suy ra
+    bằng phép chia bộ trọng số chuyên gia.
+    """
+    n = 8
+    matrix = np.ones((n, n), dtype=float)
+
+    judgments = {
+        (0, 1): 1,
+        (0, 2): 1 / 2,
+        (0, 3): 1 / 3,
+        (0, 4): 1 / 2,
+        (0, 5): 1 / 2,
+        (0, 6): 2,
+        (0, 7): 1,
+
+        (1, 2): 1 / 2,
+        (1, 3): 1 / 3,
+        (1, 4): 1 / 2,
+        (1, 5): 1 / 2,
+        (1, 6): 2,
+        (1, 7): 1,
+
+        (2, 3): 1 / 2,
+        (2, 4): 1,
+        (2, 5): 1,
+        (2, 6): 3,
+        (2, 7): 2,
+
+        (3, 4): 2,
+        (3, 5): 2,
+        (3, 6): 4,
+        (3, 7): 3,
+
+        (4, 5): 1,
+        (4, 6): 3,
+        (4, 7): 2,
+
+        (5, 6): 3,
+        (5, 7): 2,
+
+        (6, 7): 1 / 2,
+    }
+
+    for (i, j), value in judgments.items():
+        matrix[i, j] = float(value)
+        matrix[j, i] = 1.0 / float(value)
+
+    return matrix
+
+
+def _b6_ahp_weights(pairwise_matrix):
+    """
+    Tính vector trọng số AHP và tỷ lệ nhất quán CR.
+    """
+    pairwise_matrix = np.asarray(
+        pairwise_matrix,
+        dtype=float,
+    )
+
+    eigenvalues, eigenvectors = np.linalg.eig(
+        pairwise_matrix
+    )
+
+    principal_index = int(
+        np.argmax(eigenvalues.real)
+    )
+
+    lambda_max = float(
+        eigenvalues[principal_index].real
+    )
+
+    principal_vector = np.abs(
+        eigenvectors[:, principal_index].real
+    )
+
+    weights = (
+        principal_vector
+        / principal_vector.sum()
+    )
+
+    n = pairwise_matrix.shape[0]
+
+    consistency_index = (
+        (lambda_max - n) / (n - 1)
+        if n > 1
+        else 0.0
+    )
+
+    random_index_table = {
+        1: 0.00,
+        2: 0.00,
+        3: 0.58,
+        4: 0.90,
+        5: 1.12,
+        6: 1.24,
+        7: 1.32,
+        8: 1.41,
+        9: 1.45,
+        10: 1.49,
+    }
+
+    random_index = random_index_table.get(
+        n,
+        1.49,
+    )
+
+    consistency_ratio = (
+        consistency_index / random_index
+        if random_index > 0
+        else 0.0
+    )
+
+    return (
+        weights,
+        lambda_max,
+        consistency_index,
+        consistency_ratio,
+    )
+
+
+def _b6_rank_stability_table(
+    df,
+    expert_score,
+    entropy_score,
+    ahp_score,
+):
+    """So sánh thứ hạng của ba phương pháp."""
+    comparison = pd.DataFrame(
+        {
+            "Vùng": df["region_name_vi"],
+            "TOPSIS chuyên gia": expert_score,
+            "TOPSIS Entropy": entropy_score,
+            "TOPSIS AHP": ahp_score,
+        }
+    )
+
+    comparison["Hạng chuyên gia"] = (
+        comparison["TOPSIS chuyên gia"]
+        .rank(ascending=False, method="min")
+        .astype(int)
+    )
+
+    comparison["Hạng Entropy"] = (
+        comparison["TOPSIS Entropy"]
+        .rank(ascending=False, method="min")
+        .astype(int)
+    )
+
+    comparison["Hạng AHP"] = (
+        comparison["TOPSIS AHP"]
+        .rank(ascending=False, method="min")
+        .astype(int)
+    )
+
+    comparison["Biên độ hạng"] = (
+        comparison[
+            [
+                "Hạng chuyên gia",
+                "Hạng Entropy",
+                "Hạng AHP",
+            ]
+        ].max(axis=1)
+        - comparison[
+            [
+                "Hạng chuyên gia",
+                "Hạng Entropy",
+                "Hạng AHP",
+            ]
+        ].min(axis=1)
+    )
+
+    return comparison.sort_values(
+        "Hạng chuyên gia"
+    ).reset_index(drop=True)
+
+
+def page_6():
+    hero(
+        "Bài 6 — TOPSIS xếp hạng 6 vùng kinh tế theo ưu tiên đầu tư AI",
+        "Xếp hạng đa tiêu chí bằng TOPSIS, so sánh trọng số chuyên gia, Entropy và AHP; kiểm tra độ nhạy của AI Readiness và độ ổn định thứ hạng.",
+        ["6.1-6.5", "TOPSIS", "Entropy", "AHP", "Sensitivity"],
+    )
+
+    (
+        df,
+        criteria,
+        is_benefit,
+        expert_weights,
+    ) = _b6_prepare_data()
+
+    labels = _b6_labels()
+
     # =====================================================
-    # 6.1. Bối cảnh Việt Nam
+    # 6.1. Bối cảnh
     # =====================================================
     st.markdown("## 6.1. Bối cảnh Việt Nam")
 
     st.markdown(
         """
-        Việt Nam đặt mục tiêu phát triển các trung tâm nghiên cứu, đào tạo và ứng dụng AI,
-        nhưng nguồn lực công có giới hạn. Sáu vùng kinh tế - xã hội có mức độ phát triển,
-        hạ tầng số, nhân lực và năng lực đổi mới sáng tạo khác nhau.
+        Nguồn lực dành cho trung tâm AI, hạ tầng dữ liệu, nghiên cứu và đào tạo
+        không thể phân bổ đồng đều cho mọi vùng. Sáu vùng kinh tế có khác biệt lớn
+        về quy mô kinh tế, FDI, hạ tầng số, nhân lực, R&D và mức độ bất bình đẳng.
 
-        Bài 6 sử dụng **TOPSIS** để xếp hạng mức độ ưu tiên đầu tư AI cho từng vùng.
-        Phương án tốt là vùng có khoảng cách gần nhất với nghiệm lý tưởng tích cực
-        và xa nhất với nghiệm lý tưởng tiêu cực.
+        Bài 6 sử dụng TOPSIS để xác định vùng gần nhất với phương án lý tưởng.
+        Kết quả được kiểm tra bằng ba hệ trọng số: chuyên gia, Entropy và AHP.
         """
     )
 
     # =====================================================
-    # 6.2. Lý thuyết TOPSIS
+    # 6.2. Mô hình
     # =====================================================
-    st.markdown("## 6.2. Lý thuyết TOPSIS")
+    st.markdown("## 6.2. Mô hình TOPSIS")
 
     st.markdown("### Bước 1. Chuẩn hóa vector")
     st.latex(
@@ -5205,25 +5399,21 @@ def page_6():
         r"{\sqrt{\sum_{i=1}^{m}x_{ij}^{2}}}"
     )
 
-    st.markdown("### Bước 2. Ma trận chuẩn hóa có trọng số")
-    st.latex(
-        r"v_{ij}=w_jr_{ij}"
-    )
+    st.markdown("### Bước 2. Ma trận có trọng số")
+    st.latex(r"v_{ij}=w_jr_{ij}")
 
     st.markdown("### Bước 3. Nghiệm lý tưởng")
     st.latex(
-        r"A^*=\{v_1^*,v_2^*,...,v_n^*\},"
-        r"\quad"
-        r"A^-=\{v_1^-,v_2^-,...,v_n^-\}"
+        r"A^*=\{v_1^*,...,v_n^*\},"
+        r"\qquad"
+        r"A^-=\{v_1^-,...,v_n^-\}"
     )
 
-    st.markdown("### Bước 4. Khoảng cách đến nghiệm lý tưởng")
+    st.markdown("### Bước 4. Khoảng cách Euclid")
     st.latex(
         r"S_i^*="
-        r"\sqrt{\sum_j(v_{ij}-v_j^*)^2}"
-    )
-
-    st.latex(
+        r"\sqrt{\sum_j(v_{ij}-v_j^*)^2},"
+        r"\qquad"
         r"S_i^-="
         r"\sqrt{\sum_j(v_{ij}-v_j^-)^2}"
     )
@@ -5231,25 +5421,24 @@ def page_6():
     st.markdown("### Bước 5. Hệ số gần lý tưởng")
     st.latex(
         r"C_i^*="
-        r"\frac{S_i^-}"
-        r"{S_i^*+S_i^-}"
+        r"\frac{S_i^-}{S_i^*+S_i^-}"
     )
 
     st.info(
-        "Vùng có C* càng lớn thì càng gần phương án lý tưởng và được xếp hạng ưu tiên cao hơn."
+        "C* càng lớn thì vùng càng gần phương án lý tưởng và được ưu tiên cao hơn."
     )
 
     # =====================================================
-    # 6.3. Dữ liệu 6 vùng
+    # 6.3. Dữ liệu
     # =====================================================
-    st.markdown("## 6.3. Dữ liệu 6 vùng kinh tế - xã hội")
+    st.markdown("## 6.3. Dữ liệu và tiêu chí")
 
     data_display = df[
         ["region_name_vi"] + criteria
     ].rename(
         columns={
             "region_name_vi": "Vùng",
-            **criterion_labels,
+            **labels,
         }
     )
 
@@ -5262,10 +5451,10 @@ def page_6():
     criteria_table = pd.DataFrame(
         {
             "Tiêu chí": [
-                criterion_labels[col]
-                for col in criteria
+                labels[c]
+                for c in criteria
             ],
-            "Loại tiêu chí": [
+            "Loại": [
                 "Lợi ích" if flag else "Chi phí"
                 for flag in is_benefit
             ],
@@ -5273,17 +5462,15 @@ def page_6():
         }
     )
 
-    st.markdown("### Bộ trọng số chuyên gia")
-
     st.dataframe(
         criteria_table.style.format(
-            {"Trọng số chuyên gia": "{:.2f}"}
+            {"Trọng số chuyên gia": "{:.3f}"}
         ),
         use_container_width=True,
         hide_index=True,
     )
 
-    # Kết quả dùng chung
+    # Kết quả dùng chung.
     expert_score = topsis_score(
         df,
         criteria,
@@ -5291,15 +5478,34 @@ def page_6():
         is_benefit,
     )
 
-    entropy_weights = _b6_entropy_weights(
+    entropy_weights, entropy_matrix = _b6_entropy_weights(
         df,
         criteria,
+        is_benefit,
     )
 
     entropy_score = topsis_score(
         df,
         criteria,
         entropy_weights,
+        is_benefit,
+    )
+
+    pairwise_matrix = _b6_ahp_pairwise_matrix()
+
+    (
+        ahp_weights,
+        ahp_lambda_max,
+        ahp_ci,
+        ahp_cr,
+    ) = _b6_ahp_weights(
+        pairwise_matrix
+    )
+
+    ahp_score = topsis_score(
+        df,
+        criteria,
+        ahp_weights,
         is_benefit,
     )
 
@@ -5315,17 +5521,23 @@ def page_6():
         "TOPSIS Entropy",
     )
 
+    ahp_result = _b6_rank_result(
+        df,
+        ahp_score,
+        "TOPSIS AHP",
+    )
+
     # =====================================================
-    # 6.4. Yêu cầu lập trình
+    # 6.4. Lập trình
     # =====================================================
     st.markdown("## 6.4. Yêu cầu lập trình")
 
     tab641, tab642, tab643, tab644 = st.tabs(
         [
-            "6.4.1 - TOPSIS expert",
+            "6.4.1 - TOPSIS chuyên gia",
             "6.4.2 - Entropy",
             "6.4.3 - Độ nhạy AI",
-            "6.4.4 - AHP",
+            "6.4.4 - AHP & ổn định hạng",
         ]
     )
 
@@ -5334,7 +5546,7 @@ def page_6():
     # -----------------------------------------------------
     with tab641:
         st.markdown(
-            "### Câu 6.4.1. Xếp hạng TOPSIS với trọng số chuyên gia"
+            "### Câu 6.4.1. TOPSIS với trọng số chuyên gia"
         )
 
         kpi_cards(
@@ -5342,22 +5554,22 @@ def page_6():
                 (
                     "Vùng dẫn đầu",
                     expert_result.iloc[0]["Vùng"],
-                    f"C* = {expert_result.iloc[0]['TOPSIS chuyên gia']:.3f}",
+                    f"C*={expert_result.iloc[0]['TOPSIS chuyên gia']:.4f}",
                 ),
                 (
                     "Vùng thứ hai",
                     expert_result.iloc[1]["Vùng"],
-                    f"C* = {expert_result.iloc[1]['TOPSIS chuyên gia']:.3f}",
+                    f"C*={expert_result.iloc[1]['TOPSIS chuyên gia']:.4f}",
                 ),
                 (
                     "Vùng thứ ba",
                     expert_result.iloc[2]["Vùng"],
-                    f"C* = {expert_result.iloc[2]['TOPSIS chuyên gia']:.3f}",
+                    f"C*={expert_result.iloc[2]['TOPSIS chuyên gia']:.4f}",
                 ),
                 (
-                    "Số tiêu chí",
-                    "8",
-                    "7 lợi ích, 1 chi phí",
+                    "Tổng trọng số",
+                    f"{expert_weights.sum():.2f}",
+                    "phải bằng 1",
                 ),
             ]
         )
@@ -5385,7 +5597,9 @@ def page_6():
                 use_container_width=True,
             )
 
-        with st.expander("Xem mã Python cho câu 6.4.1"):
+        with st.expander(
+            "Xem mã TOPSIS rút gọn"
+        ):
             st.code(
                 """score = topsis_score(
     df,
@@ -5395,7 +5609,7 @@ def page_6():
 )
 
 result = pd.DataFrame({
-    "region": df["region_name_vi"],
+    "Vùng": df["region_name_vi"],
     "C_star": score
 }).sort_values(
     "C_star",
@@ -5409,30 +5623,46 @@ result = pd.DataFrame({
     # -----------------------------------------------------
     with tab642:
         st.markdown(
-            "### Câu 6.4.2. Tính trọng số Entropy và chạy lại TOPSIS"
+            "### Câu 6.4.2. Trọng số Entropy và TOPSIS"
         )
 
         weight_compare = pd.DataFrame(
             {
                 "Tiêu chí": [
-                    criterion_labels[col]
-                    for col in criteria
+                    labels[c]
+                    for c in criteria
                 ],
-                "Trọng số chuyên gia": expert_weights,
-                "Trọng số Entropy": entropy_weights,
+                "Chuyên gia": expert_weights,
+                "Entropy": entropy_weights,
+                "Chênh lệch": (
+                    entropy_weights
+                    - expert_weights
+                ),
             }
+        )
+
+        st.dataframe(
+            weight_compare.style.format(
+                {
+                    "Chuyên gia": "{:.4f}",
+                    "Entropy": "{:.4f}",
+                    "Chênh lệch": "{:+.4f}",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
         )
 
         rank_compare = pd.DataFrame(
             {
                 "Vùng": df["region_name_vi"],
-                "TOPSIS chuyên gia": expert_score,
-                "TOPSIS Entropy": entropy_score,
+                "Điểm chuyên gia": expert_score,
+                "Điểm Entropy": entropy_score,
             }
         )
 
         rank_compare["Hạng chuyên gia"] = (
-            rank_compare["TOPSIS chuyên gia"]
+            rank_compare["Điểm chuyên gia"]
             .rank(
                 ascending=False,
                 method="min",
@@ -5441,7 +5671,7 @@ result = pd.DataFrame({
         )
 
         rank_compare["Hạng Entropy"] = (
-            rank_compare["TOPSIS Entropy"]
+            rank_compare["Điểm Entropy"]
             .rank(
                 ascending=False,
                 method="min",
@@ -5454,49 +5684,30 @@ result = pd.DataFrame({
             - rank_compare["Hạng Entropy"]
         )
 
-        c1, c2 = st.columns([0.9, 1.1])
-
-        with c1:
-            st.markdown("#### So sánh trọng số")
-
-            st.dataframe(
-                weight_compare.style.format(
-                    {
-                        "Trọng số chuyên gia": "{:.4f}",
-                        "Trọng số Entropy": "{:.4f}",
-                    }
-                ),
-                use_container_width=True,
-                hide_index=True,
-            )
-
-        with c2:
-            st.markdown("#### So sánh thứ hạng")
-
-            st.dataframe(
-                rank_compare.sort_values(
-                    "Hạng chuyên gia"
-                ).style.format(
-                    {
-                        "TOPSIS chuyên gia": "{:.4f}",
-                        "TOPSIS Entropy": "{:.4f}",
-                    }
-                ),
-                use_container_width=True,
-                hide_index=True,
-            )
+        st.dataframe(
+            rank_compare.sort_values(
+                "Hạng chuyên gia"
+            ).style.format(
+                {
+                    "Điểm chuyên gia": "{:.4f}",
+                    "Điểm Entropy": "{:.4f}",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
 
         compare_long = rank_compare.melt(
             id_vars="Vùng",
             value_vars=[
-                "TOPSIS chuyên gia",
-                "TOPSIS Entropy",
+                "Điểm chuyên gia",
+                "Điểm Entropy",
             ],
             var_name="Phương pháp",
             value_name="Điểm",
         )
 
-        fig_compare = px.bar(
+        fig = px.bar(
             compare_long,
             x="Vùng",
             y="Điểm",
@@ -5505,8 +5716,7 @@ result = pd.DataFrame({
             template=PLOT_TEMPLATE,
             title="So sánh TOPSIS chuyên gia và Entropy",
         )
-
-        fig_compare.update_layout(
+        fig.update_layout(
             height=480,
             margin=dict(
                 l=10,
@@ -5517,81 +5727,61 @@ result = pd.DataFrame({
         )
 
         st.plotly_chart(
-            fig_compare,
+            fig,
             use_container_width=True,
         )
 
-        changed_regions = rank_compare.loc[
+        changed = rank_compare.loc[
             rank_compare["Thay đổi hạng"] != 0,
             "Vùng",
         ].tolist()
 
         st.info(
-            "Các vùng thay đổi thứ hạng khi dùng Entropy: "
+            "Các vùng thay đổi thứ hạng: "
             + (
-                ", ".join(changed_regions)
-                if changed_regions
+                ", ".join(changed)
+                if changed
                 else "không có"
             )
             + "."
         )
-
-        with st.expander("Xem mã Python cho câu 6.4.2"):
-            st.code(
-                """entropy_w = entropy_weights_positive(
-    normalized_matrix
-)
-
-entropy_score = topsis_score(
-    df,
-    criteria,
-    entropy_w,
-    is_benefit
-)""",
-                language="python",
-            )
 
     # -----------------------------------------------------
     # 6.4.3
     # -----------------------------------------------------
     with tab643:
         st.markdown(
-            "### Câu 6.4.3. Độ nhạy khi trọng số AI readiness thay đổi"
+            "### Câu 6.4.3. Độ nhạy trọng số AI Readiness"
         )
 
-        sensitivity_rows = []
-
-        ai_weight_values = np.arange(
+        ai_values = np.arange(
             0.10,
             0.401,
             0.05,
         )
 
-        for ai_weight in ai_weight_values:
-            new_weights = expert_weights.copy()
+        rows = []
 
-            remaining_weight = 1 - ai_weight
+        for ai_weight in ai_values:
+            weights = expert_weights.copy()
 
             other_mask = np.ones(
-                len(new_weights),
+                len(weights),
                 dtype=bool,
             )
-
-            # AI readiness là tiêu chí thứ 4, index = 3
             other_mask[3] = False
 
-            new_weights[other_mask] = (
-                new_weights[other_mask]
-                / new_weights[other_mask].sum()
-                * remaining_weight
+            weights[other_mask] = (
+                weights[other_mask]
+                / weights[other_mask].sum()
+                * (1.0 - ai_weight)
             )
-
-            new_weights[3] = ai_weight
+            weights[3] = ai_weight
 
             score = topsis_score(
                 df,
                 criteria,
-                new_weights,
+                weights,
                 is_benefit,
             )
 
@@ -5612,7 +5802,7 @@ entropy_score = topsis_score(
             )
 
             for _, row in temp.iterrows():
-                sensitivity_rows.append(
+                rows.append(
                     [
                         ai_weight,
                         row["Vùng"],
@@ -5621,8 +5811,8 @@ entropy_score = topsis_score(
                     ]
                 )
 
-        sensitivity_df = pd.DataFrame(
-            sensitivity_rows,
+        sensitivity = pd.DataFrame(
+            rows,
             columns=[
                 "Trọng số AI",
                 "Vùng",
@@ -5631,21 +5821,19 @@ entropy_score = topsis_score(
             ],
         )
 
-        fig_line = px.line(
-            sensitivity_df,
+        fig_rank = px.line(
+            sensitivity,
             x="Trọng số AI",
             y="Hạng",
             color="Vùng",
             markers=True,
             template=PLOT_TEMPLATE,
-            title="Độ nhạy thứ hạng theo trọng số AI readiness",
+            title="Độ nhạy thứ hạng theo trọng số AI",
         )
-
-        fig_line.update_yaxes(
+        fig_rank.update_yaxes(
             autorange="reversed"
         )
-
-        fig_line.update_layout(
+        fig_rank.update_layout(
             height=540,
             margin=dict(
                 l=10,
@@ -5656,27 +5844,26 @@ entropy_score = topsis_score(
         )
 
         st.plotly_chart(
-            fig_line,
+            fig_rank,
             use_container_width=True,
         )
 
-        rank_heatmap = sensitivity_df.pivot(
+        rank_pivot = sensitivity.pivot(
             index="Vùng",
             columns="Trọng số AI",
             values="Hạng",
         )
 
         fig_heatmap = px.imshow(
-            rank_heatmap,
+            rank_pivot,
             text_auto=".0f",
             aspect="auto",
             color_continuous_scale="RdYlGn_r",
             template=PLOT_TEMPLATE,
-            title="Heatmap thứ hạng theo trọng số AI",
+            title="Heatmap độ nhạy thứ hạng",
         )
-
         fig_heatmap.update_layout(
-            height=500,
+            height=510,
             margin=dict(
                 l=10,
                 r=10,
@@ -5690,107 +5877,46 @@ entropy_score = topsis_score(
             use_container_width=True,
         )
 
-        first_place_count = (
-            sensitivity_df[
-                sensitivity_df["Hạng"] == 1
+        leaders = (
+            sensitivity[
+                sensitivity["Hạng"] == 1
             ]["Vùng"]
             .value_counts()
-            .reset_index()
-        )
-
-        first_place_count.columns = [
-            "Vùng",
-            "Số lần đứng đầu",
-        ]
-
-        st.markdown(
-            "#### Mức ổn định của vị trí dẫn đầu"
+            .rename_axis("Vùng")
+            .reset_index(
+                name="Số lần đứng đầu"
+            )
         )
 
         st.dataframe(
-            first_place_count,
+            leaders,
             use_container_width=True,
             hide_index=True,
         )
+
+        if len(leaders) == 1:
+            st.success(
+                "Vị trí dẫn đầu ổn định trong toàn bộ dải trọng số AI."
+            )
+        else:
+            st.warning(
+                "Vị trí dẫn đầu thay đổi khi trọng số AI thay đổi; "
+                "kết luận chính sách nhạy với ưu tiên của người ra quyết định."
+            )
 
     # -----------------------------------------------------
     # 6.4.4
     # -----------------------------------------------------
     with tab644:
         st.markdown(
-            "### Câu 6.4.4. Dùng AHP để xác định trọng số rồi chạy TOPSIS"
-        )
-
-        # Tạo ma trận so sánh cặp nhất quán từ vector trọng số chuyên gia.
-        # A_ij = w_i / w_j
-        pairwise_matrix = (
-            expert_weights[:, None]
-            / expert_weights[None, :]
-        )
-
-        eigenvalues, eigenvectors = np.linalg.eig(
-            pairwise_matrix
-        )
-
-        principal_index = int(
-            np.argmax(
-                eigenvalues.real
-            )
-        )
-
-        ahp_weights = np.abs(
-            eigenvectors[
-                :,
-                principal_index,
-            ].real
-        )
-
-        ahp_weights = (
-            ahp_weights
-            / ahp_weights.sum()
-        )
-
-        lambda_max = float(
-            eigenvalues[
-                principal_index
-            ].real
-        )
-
-        n = len(expert_weights)
-
-        consistency_index = (
-            (lambda_max - n)
-            / (n - 1)
-        )
-
-        # Random Index cho n=8
-        random_index = 1.41
-
-        consistency_ratio = (
-            consistency_index
-            / random_index
-            if random_index != 0
-            else 0
-        )
-
-        ahp_score = topsis_score(
-            df,
-            criteria,
-            ahp_weights,
-            is_benefit,
-        )
-
-        ahp_result = _b6_rank_result(
-            df,
-            ahp_score,
-            "TOPSIS-AHP",
+            "### Câu 6.4.4. AHP và độ ổn định thứ hạng"
         )
 
         ahp_weight_table = pd.DataFrame(
             {
                 "Tiêu chí": [
-                    criterion_labels[col]
-                    for col in criteria
+                    labels[c]
+                    for c in criteria
                 ],
                 "Trọng số AHP": ahp_weights,
             }
@@ -5800,23 +5926,23 @@ entropy_score = topsis_score(
             [
                 (
                     "λmax",
-                    f"{lambda_max:.4f}",
+                    f"{ahp_lambda_max:.4f}",
                     "giá trị riêng lớn nhất",
                 ),
                 (
                     "CI",
-                    f"{consistency_index:.4f}",
+                    f"{ahp_ci:.4f}",
                     "Consistency Index",
                 ),
                 (
                     "CR",
-                    f"{consistency_ratio:.4f}",
-                    "CR < 0,10 là phù hợp",
+                    f"{ahp_cr:.4f}",
+                    "đạt nếu <0,10",
                 ),
                 (
-                    "Vùng dẫn đầu",
+                    "Vùng dẫn đầu AHP",
                     ahp_result.iloc[0]["Vùng"],
-                    f"C* = {ahp_result.iloc[0]['TOPSIS-AHP']:.3f}",
+                    f"C*={ahp_result.iloc[0]['TOPSIS AHP']:.4f}",
                 ),
             ]
         )
@@ -5835,21 +5961,30 @@ entropy_score = topsis_score(
         with c2:
             st.dataframe(
                 ahp_result.style.format(
-                    {"TOPSIS-AHP": "{:.4f}"}
+                    {"TOPSIS AHP": "{:.4f}"}
                 ),
                 use_container_width=True,
                 hide_index=True,
             )
 
+        if ahp_cr < 0.10:
+            st.success(
+                f"Ma trận AHP nhất quán ở mức chấp nhận được: CR={ahp_cr:.4f}<0,10."
+            )
+        else:
+            st.error(
+                f"CR={ahp_cr:.4f}≥0,10. Cần rà soát lại đánh giá cặp."
+            )
+
         pairwise_df = pd.DataFrame(
             pairwise_matrix,
             index=[
-                criterion_labels[col]
-                for col in criteria
+                labels[c]
+                for c in criteria
             ],
             columns=[
-                criterion_labels[col]
-                for col in criteria
+                labels[c]
+                for c in criteria
             ],
         )
 
@@ -5863,104 +5998,154 @@ entropy_score = topsis_score(
                 use_container_width=True,
             )
 
+        stability = _b6_rank_stability_table(
+            df,
+            expert_score,
+            entropy_score,
+            ahp_score,
+        )
+
+        st.markdown(
+            "#### So sánh độ ổn định giữa ba phương pháp"
+        )
+
+        st.dataframe(
+            stability.style.format(
+                {
+                    "TOPSIS chuyên gia": "{:.4f}",
+                    "TOPSIS Entropy": "{:.4f}",
+                    "TOPSIS AHP": "{:.4f}",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        rank_corr = (
+            stability[
+                [
+                    "Hạng chuyên gia",
+                    "Hạng Entropy",
+                    "Hạng AHP",
+                ]
+            ]
+            .corr(
+                method="spearman"
+            )
+        )
+
+        st.markdown(
+            "#### Tương quan Spearman giữa các thứ hạng"
+        )
+
+        st.dataframe(
+            rank_corr.style.format(
+                "{:.3f}"
+            ),
+            use_container_width=True,
+        )
+
+        stable_regions = stability.loc[
+            stability["Biên độ hạng"] <= 1,
+            "Vùng",
+        ].tolist()
+
         st.info(
-            "Ma trận AHP trong dashboard được tạo từ bộ trọng số chuyên gia nên nhất quán hoàn toàn. "
-            "Khi khảo sát chuyên gia thực tế, cần nhập trực tiếp đánh giá cặp theo thang Saaty 1-9."
+            "Các vùng có thứ hạng tương đối ổn định, biên độ không quá 1 bậc: "
+            + (
+                ", ".join(stable_regions)
+                if stable_regions
+                else "không có"
+            )
+            + "."
         )
 
     # =====================================================
     # Tải kết quả
     # =====================================================
-    export_result = pd.DataFrame(
-        {
-            "Vùng": df["region_name_vi"],
-            "TOPSIS chuyên gia": expert_score,
-            "TOPSIS Entropy": entropy_score,
-        }
-    )
-
-    export_result["Hạng chuyên gia"] = (
-        export_result[
-            "TOPSIS chuyên gia"
-        ]
-        .rank(
-            ascending=False,
-            method="min",
-        )
-        .astype(int)
-    )
-
-    export_result["Hạng Entropy"] = (
-        export_result[
-            "TOPSIS Entropy"
-        ]
-        .rank(
-            ascending=False,
-            method="min",
-        )
-        .astype(int)
+    export_result = _b6_rank_stability_table(
+        df,
+        expert_score,
+        entropy_score,
+        ahp_score,
     )
 
     st.download_button(
         "Tải kết quả Bài 6 dạng CSV",
         data=export_result.to_csv(
             index=False
-        ).encode(
-            "utf-8-sig"
-        ),
+        ).encode("utf-8-sig"),
         file_name="bai6_topsis_6_vung.csv",
         mime="text/csv",
-        key="download_bai6",
+        key="download_bai6_fixed",
     )
 
     # =====================================================
-    # 6.5. Câu hỏi thảo luận chính sách
+    # 6.5. Thảo luận
     # =====================================================
-    st.markdown("## 6.5. Câu hỏi thảo luận chính sách")
+    st.markdown(
+        "## 6.5. Câu hỏi thảo luận chính sách"
+    )
 
-    top_three = expert_result.head(3)["Vùng"].tolist()
+    top_three = expert_result.head(
+        3
+    )["Vùng"].tolist()
 
     with st.expander(
-        "a) Vùng nào dẫn đầu? Có nên đặt trung tâm AI quốc gia đầu tiên tại đó không?",
+        "a) Vùng dẫn đầu có nên được đặt trung tâm AI quốc gia đầu tiên không?",
         expanded=True,
     ):
         st.markdown(
-            f"Vùng dẫn đầu theo bộ trọng số chuyên gia là "
-            f"**{expert_result.iloc[0]['Vùng']}**. "
-            "Đây là ứng viên mạnh về kinh tế, hạ tầng số và năng lực AI. "
-            "Tuy nhiên, quyết định cuối cùng còn phải xét đất đai, năng lượng, "
-            "an ninh dữ liệu, liên kết đại học-doanh nghiệp và cân bằng vùng."
+            f"Vùng dẫn đầu theo trọng số chuyên gia là "
+            f"**{expert_result.iloc[0]['Vùng']}**. Đây là ứng viên mạnh về quy mô "
+            "kinh tế, hạ tầng số, AI và nhân lực. Tuy nhiên, quyết định địa điểm còn "
+            "phải xét nguồn điện, quỹ đất, an ninh dữ liệu, liên kết đại học-doanh nghiệp "
+            "và yêu cầu cân bằng vùng."
         )
 
     with st.expander(
-        "b) Vì sao trọng số Entropy có thể làm thay đổi thứ hạng?",
+        "b) Vì sao Entropy có thể cho thứ hạng khác chuyên gia?",
         expanded=True,
     ):
         st.markdown(
-            "Entropy trao trọng số lớn hơn cho tiêu chí có mức độ phân hóa dữ liệu cao. "
-            "Do đó, vùng nổi bật ở các tiêu chí biến thiên mạnh có thể tăng hạng, "
-            "dù chuyên gia không gán trọng số cao nhất cho tiêu chí đó."
+            "Entropy trao trọng số lớn cho tiêu chí có khả năng phân biệt các vùng mạnh. "
+            "Trong khi đó, trọng số chuyên gia phản ánh ưu tiên chính sách. Vì vậy, "
+            "hai cách tiếp cận có thể khác nhau dù cùng sử dụng một bộ dữ liệu."
         )
 
     with st.expander(
-        "c) Tương quan cao giữa AI readiness và Internet ảnh hưởng thế nào?",
+        "c) Nếu AI Readiness và Internet tương quan cao thì xử lý thế nào?",
         expanded=True,
     ):
         st.markdown(
-            "Tương quan cao có thể gây đếm trùng thông tin, làm một nhóm năng lực số "
-            "được phản ánh nhiều lần. Có thể xử lý bằng PCA, loại bớt một tiêu chí, "
-            "điều chỉnh trọng số theo tương quan hoặc sử dụng phương pháp CRITIC."
+            "Tương quan cao có thể gây đếm trùng thông tin. Có thể loại bớt một tiêu chí, "
+            "dùng PCA, điều chỉnh trọng số theo tương quan hoặc sử dụng CRITIC. "
+            "Kết quả nên được kiểm tra lại sau khi loại tiêu chí trùng lặp."
         )
 
     with st.expander(
-        "d) Nếu xây dựng ba trung tâm AI quốc gia, nên chọn ba vùng nào?",
+        "d) Nếu xây dựng ba trung tâm AI, nên ưu tiên vùng nào?",
         expanded=True,
     ):
         st.markdown(
-            f"Theo kết quả TOPSIS chuyên gia, ba vùng dẫn đầu là "
-            f"**{', '.join(top_three)}**. "
-            "Khi triển khai thực tế nên bổ sung các tiêu chí về năng lượng, "
-            "an ninh, khả năng kết nối nghiên cứu và tác động lan tỏa sang vùng yếu hơn."
+            f"Theo TOPSIS chuyên gia, ba vùng dẫn đầu là "
+            f"**{', '.join(top_three)}**. Mô hình chỉ cung cấp xếp hạng định lượng; "
+            "cần kết hợp thẩm định hạ tầng năng lượng, an ninh, vốn nhân lực và tác động lan tỏa."
+        )
+
+    with st.expander(
+        "e) Kết luận có ổn định giữa các phương pháp không?",
+        expanded=True,
+    ):
+        max_rank_range = int(
+            export_result["Biên độ hạng"].max()
+        )
+
+        st.markdown(
+            f"Biên độ thay đổi thứ hạng lớn nhất giữa chuyên gia, Entropy và AHP là "
+            f"**{max_rank_range} bậc**. Nếu biên độ nhỏ, kết luận tương đối vững; "
+            "nếu biên độ lớn, báo cáo phải trình bày kết quả như một khoảng ưu tiên "
+            "thay vì khẳng định một thứ hạng duy nhất."
         )
 
 
