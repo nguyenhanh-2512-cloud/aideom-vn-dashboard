@@ -12319,7 +12319,80 @@ def page_11():
             "an toàn, giải thích mô hình, kiểm định dữ liệu và phê duyệt của con người."
         )
 
+def _b12_flow_figure():
+    labels = [
+        "Dữ liệu vĩ mô",
+        "Dữ liệu ngành",
+        "Dữ liệu vùng",
+        "Ngân sách và rủi ro",
+        "M1 - Dự báo",
+        "M2 - Sẵn sàng vùng",
+        "M3 - Phân bổ ngân sách",
+        "M4 - Lao động và AI",
+        "M5 - Rủi ro và bất định",
+        "M6 - Dashboard tích hợp",
+        "KPI năm 2030",
+        "Cảnh báo",
+        "Khuyến nghị chính sách",
+    ]
 
+    source = [
+        0, 1, 2, 3,
+        4, 5,
+        6, 6,
+        7,
+        4, 5, 6, 7, 8,
+        9, 9, 9,
+    ]
+
+    target = [
+        4, 5, 5, 6,
+        6, 6,
+        7, 8,
+        8,
+        9, 9, 9, 9, 9,
+        10, 11, 12,
+    ]
+
+    value = [
+        4, 3, 3, 3,
+        3, 3,
+        3, 2,
+        2,
+        3, 3, 3, 3, 3,
+        4, 3, 3,
+    ]
+
+    figure = go.Figure(
+        data=[
+            go.Sankey(
+                node=dict(
+                    pad=18,
+                    thickness=20,
+                    label=labels,
+                ),
+                link=dict(
+                    source=source,
+                    target=target,
+                    value=value,
+                ),
+            )
+        ]
+    )
+
+    figure.update_layout(
+        title="Luồng dữ liệu và liên kết mô-đun AIDEOM-VN",
+        height=600,
+        template=PLOT_TEMPLATE,
+        margin=dict(
+            l=10,
+            r=10,
+            t=60,
+            b=10,
+        ),
+    )
+
+    return figure
 def _b12_scenarios():
     return {
         "S1 - Truyền thống": np.array(
