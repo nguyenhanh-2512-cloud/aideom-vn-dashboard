@@ -13306,8 +13306,120 @@ def page_12():
         key="b12_flow_figure",
     )
 
-    st.markdown("## 12.2. Năm kịch bản")
+    # =====================================================
+    # 12.1.1. Nguồn và phạm vi dữ liệu
+    # =====================================================
+    st.markdown("### Nguồn và phạm vi dữ liệu")
 
+    data_sources = pd.DataFrame(
+        [
+            [
+                "vietnam_macro_2020_2025.csv",
+                "Dữ liệu vĩ mô Việt Nam",
+                "2020-2025",
+                "Nghìn tỷ VND, %, tỷ USD",
+                "NSO/GSO, MPI, World Bank và dữ liệu tổng hợp của dự án",
+                "Dữ liệu quan sát và một số biến đại diện",
+            ],
+            [
+                "vietnam_sectors_2024.csv",
+                "10 ngành kinh tế",
+                "2024",
+                "%, triệu lao động, tỷ USD, chỉ số 0-100",
+                "NSO/GSO, MIC/MoST và dữ liệu tổng hợp của dự án",
+                "Một số chỉ tiêu AI và rủi ro là biến đại diện",
+            ],
+            [
+                "vietnam_regions_2024.csv",
+                "6 vùng kinh tế - xã hội",
+                "2024",
+                "Triệu VND, tỷ USD, %, chỉ số 0-100",
+                "NSO/GSO, MPI, MIC và WIPO/GII tham chiếu",
+                "Dữ liệu vùng và chỉ số tổng hợp",
+            ],
+            [
+                "Tham số mô hình",
+                "Hệ số tác động, rủi ro và kịch bản",
+                "2026-2035",
+                "Tỷ trọng, hệ số và xác suất",
+                "Giả định phục vụ mô phỏng bài tập",
+                "Không phải số liệu dự báo chính thức",
+            ],
+        ],
+        columns=[
+            "Tệp/Nhóm dữ liệu",
+            "Phạm vi",
+            "Năm cơ sở",
+            "Đơn vị",
+            "Nguồn tham chiếu",
+            "Ghi chú phương pháp",
+        ],
+    )
+
+    st.dataframe(
+        data_sources,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    file_checks = pd.DataFrame(
+        [
+            {
+                "Tệp dữ liệu": "vietnam_macro_2020_2025.csv",
+                "Đường dẫn": str(
+                    DATA_DIR / "vietnam_macro_2020_2025.csv"
+                ),
+                "Tồn tại": (
+                    DATA_DIR / "vietnam_macro_2020_2025.csv"
+                ).exists(),
+            },
+            {
+                "Tệp dữ liệu": "vietnam_sectors_2024.csv",
+                "Đường dẫn": str(
+                    DATA_DIR / "vietnam_sectors_2024.csv"
+                ),
+                "Tồn tại": (
+                    DATA_DIR / "vietnam_sectors_2024.csv"
+                ).exists(),
+            },
+            {
+                "Tệp dữ liệu": "vietnam_regions_2024.csv",
+                "Đường dẫn": str(
+                    DATA_DIR / "vietnam_regions_2024.csv"
+                ),
+                "Tồn tại": (
+                    DATA_DIR / "vietnam_regions_2024.csv"
+                ).exists(),
+            },
+        ]
+    )
+
+    with st.expander(
+        "Kiểm tra trạng thái các tệp dữ liệu",
+        expanded=False,
+    ):
+        st.dataframe(
+            file_checks,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        if bool(file_checks["Tồn tại"].all()):
+            st.success(
+                "Ba tệp dữ liệu đầu vào đều tồn tại và sẵn sàng cho pipeline."
+            )
+        else:
+            st.error(
+                "Có tệp dữ liệu bị thiếu. Hãy kiểm tra lại thư mục data."
+            )
+
+    st.warning(
+        "Các hệ số beta, xác suất rủi ro, tác động AI, đào tạo lại và "
+        "một số chỉ số tổng hợp là tham số mô phỏng. Kết quả của dashboard "
+        "được sử dụng để so sánh kịch bản, không phải dự báo chính thức."
+    )
+
+    st.markdown("## 12.2. Năm kịch bản")
     st.dataframe(
         scenarios[
             [
