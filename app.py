@@ -6149,1390 +6149,737 @@ result = pd.DataFrame({
         )
 
 
-def _b7_non_dominated_mask(cost_matrix):
+def _b7_decode(decision_vector):
+    return np.asarray(decision_vector, dtype=float).reshape(6, 4)
+
+
+def _b7_objectives(decision_vector):
     """
-    Trả về mask của các nghiệm không bị trội.
-
-    cost_matrix phải được đưa về dạng tất cả mục tiêu đều là MIN.
-    Ví dụ Growth là mục tiêu MAX nên sử dụng -Growth.
+    Trả về bốn mục tiêu theo dạng tự nhiên:
+    Growth càng cao càng tốt;
+    Inequality, Emission, DataRisk càng thấp càng tốt.
     """
-    cost_matrix = np.asarray(cost_matrix, dtype=float)
-    n = len(cost_matrix)
-    is_pareto = np.ones(n, dtype=bool)
+    regions, items, beta, d0 = region_beta_matrix()
+    x = _b7_decode(decision_vector)
 
-    for i in range(n):
-        if not is_pareto[i]:
-            continue
+    region_gain = (beta * x).sum(axis=1)
+    growth = float(region_gain.sum())
 
-        dominated_by_other = np.any(
-            np.all(
-                cost_matrix <= cost_matrix[i],
-                axis=1,
-            )
-            & np.any(
-                cost_matrix < cost_matrix[i],
-                axis=1,
-            )
-        )
+    digital_after = d0 + 0.002 * x[:, 1]
+    inequality = float(gini(digital_after))
 
-        if dominated_by_other:
-            is_pareto[i] = False
+    emission_coeff = np.array([0.42, 0.14, 0.31, 0.08], dtype=float)
+    emission = float((x * emission_coeff).sum())
 
-    return is_pareto
+    data_risk_coeff = np.array([0.12, 0.24, 0.58, 0.10], dtype=float)
+    data_risk = float((x * data_risk_coeff).sum())
 
-
-def _b7_parameters():
-    """
-    Tham số cho bốn mục tiêu của Bài 7.
-    """
-    regions, items, beta, D0 = region_beta_matrix()
-
-    emission_coef = np.array(
-        [0.42, 0.55, 0.48, 0.32, 0.62, 0.38],
-        dtype=float,
+    fairness_ratio = float(
+        digital_after.min() / max(digital_after.max(), 1e-12)
     )
 
-    data_risk_coef = np.array(
-        [0.18, 0.45, 0.28, 0.12, 0.52, 0.22],
-        dtype=float,
-    )
-
-    human_protection_coef = np.array(
-        [0.32, 0.28, 0.30, 0.35, 0.25, 0.30],
-        dtype=float,
-    )
-
-    return (
-        regions,
-        items,
-        beta,
-        D0,
-        emission_coef,
-        data_risk_coef,
-        human_protection_coef,
-    )
+    return {
+        "Growth": growth,
+        "Inequality": inequality,
+        "Emission": emission,
+        "DataRisk": data_risk,
+        "FairnessRatio": fairness_ratio,
+    }
 
 
-def _b7_objectives(
-    X,
-    beta,
-    emission_coef,
-    data_risk_coef,
-    human_protection_coef,
+def _b7_constraint_values(
+    decision_vector,
+    budget=50000.0,
+    region_floor=5000.0,
+    region_cap=12000.0,
+    human_floor=12000.0,
+    fairness_lambda=0.68,
 ):
     """
-    Tính bốn mục tiêu:
-    1. Growth: tối đa hóa
-    2. Inequality: tối thiểu hóa
-    3. Emission: tối thiểu hóa
-    4. DataRisk: tối thiểu hóa
+    Pymoo quy ước G <= 0 là khả thi.
     """
-    region_budget = X.sum(axis=1)
+    x = _b7_decode(decision_vector)
+    _, _, _, d0 = region_beta_matrix()
 
-    growth = float(
-        np.sum(
-            beta * X
-        )
+    region_total = x.sum(axis=1)
+    digital_after = d0 + 0.002 * x[:, 1]
+
+    constraints = [
+        x.sum() - budget,
+        human_floor - x[:, 3].sum(),
+    ]
+
+    constraints.extend(region_floor - region_total)
+    constraints.extend(region_total - region_cap)
+
+    max_digital = digital_after.max()
+    constraints.extend(
+        fairness_lambda * max_digital - digital_after
     )
 
-    inequality = float(
-        np.mean(
-            np.abs(
-                region_budget
-                - region_budget.mean()
-            )
-        )
-    )
-
-    emission = float(
-        np.sum(
-            emission_coef
-            * (
-                X[:, 0]
-                + X[:, 2]
-            )
-        )
-    )
-
-    data_risk = float(
-        np.sum(
-            data_risk_coef
-            * X[:, 2]
-        )
-        - np.sum(
-            human_protection_coef
-            * X[:, 3]
-        )
-    )
-
-    return (
-        growth,
-        inequality,
-        emission,
-        data_risk,
-    )
+    return np.asarray(constraints, dtype=float)
 
 
-@st.cache_data
-def _b7_sample_pareto(
-    n_samples=2200,
+@st.cache_data(show_spinner=False)
+def _b7_run_nsga2(
+    population_size=100,
+    generations=200,
     seed=42,
     fairness_lambda=0.68,
 ):
     """
-    Tạo nghiệm khả thi theo phương pháp xây dựng trực tiếp thay vì
-    lấy mẫu ngẫu nhiên rồi loại bỏ gần như toàn bộ nghiệm.
-
-    Nguyên nhân lỗi cũ:
-    - fairness_lambda=0.68 rất sát biên khả thi;
-    - Tây Nguyên và Trung du miền núi phía Bắc cần mức đầu tư D rất lớn;
-    - lấy mẫu Dirichlet ngẫu nhiên hầu như không tạo được nghiệm thỏa đồng thời
-      ràng buộc công bằng, sàn-trần vùng và H >= 12.000.
-
-    Hàm mới chủ động:
-    1. Tính mức D tối thiểu để đạt công bằng;
-    2. Sinh ngân sách vùng trong [5.000, 12.000];
-    3. Phân bổ D, H, I, AI sao cho mọi ràng buộc đều thỏa;
-    4. Lọc tập nghiệm Pareto.
+    Chạy NSGA-II thật bằng pymoo.
     """
+    try:
+        from pymoo.core.problem import ElementwiseProblem
+        from pymoo.algorithms.moo.nsga2 import NSGA2
+        from pymoo.optimize import minimize
+        from pymoo.termination import get_termination
+        from pymoo.operators.sampling.rnd import FloatRandomSampling
+        from pymoo.operators.crossover.sbx import SBX
+        from pymoo.operators.mutation.pm import PM
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "Thiếu pymoo. Hãy cài pymoo>=0.6.1."
+        ) from exc
 
-    rng = np.random.default_rng(seed)
-
-    (
-        regions,
-        items,
-        beta,
-        D0,
-        emission_coef,
-        data_risk_coef,
-        human_protection_coef,
-    ) = _b7_parameters()
-
-    def allocate_bounded(
-        total,
-        lower,
-        upper,
-    ):
-        """
-        Phân bổ một tổng cố định trong khoảng lower <= x <= upper.
-        """
-        lower = np.asarray(
-            lower,
-            dtype=float,
-        )
-
-        upper = np.asarray(
-            upper,
-            dtype=float,
-        )
-
-        x = lower.copy()
-
-        remaining = float(
-            total - x.sum()
-        )
-
-        if remaining < -1e-7:
-            return None
-
-        if total > upper.sum() + 1e-7:
-            return None
-
-        for _ in range(100):
-            if remaining <= 1e-8:
-                break
-
-            capacity = upper - x
-
-            active = np.where(
-                capacity > 1e-10
-            )[0]
-
-            if len(active) == 0:
-                break
-
-            weights = rng.dirichlet(
-                np.ones(
-                    len(active)
-                )
+    class RegionalParetoProblem(ElementwiseProblem):
+        def __init__(self):
+            super().__init__(
+                n_var=24,
+                n_obj=4,
+                n_ieq_constr=20,
+                xl=np.zeros(24, dtype=float),
+                xu=np.full(24, 12000.0, dtype=float),
             )
 
-            proposed = (
-                remaining
-                * weights
+        def _evaluate(self, x, out, *args, **kwargs):
+            obj = _b7_objectives(x)
+
+            # Pymoo luôn MINIMIZE.
+            out["F"] = np.array(
+                [
+                    -obj["Growth"],
+                    obj["Inequality"],
+                    obj["Emission"],
+                    obj["DataRisk"],
+                ],
+                dtype=float,
             )
 
-            added = np.minimum(
-                proposed,
-                capacity[active],
+            out["G"] = _b7_constraint_values(
+                x,
+                fairness_lambda=fairness_lambda,
             )
 
-            x[active] += added
-
-            remaining -= float(
-                added.sum()
-            )
-
-        if remaining > 1e-5:
-            return None
-
-        return x
-
-    accepted_rows = []
-    accepted_matrices = []
-
-    # Mức Digital Index cao nhất ban đầu là 82.
-    # Giữ M=82 giúp ràng buộc fairness_lambda=0.68 khả thi.
-    target_max_index = float(
-        np.max(D0)
+    algorithm = NSGA2(
+        pop_size=int(population_size),
+        sampling=FloatRandomSampling(),
+        crossover=SBX(
+            prob=0.90,
+            eta=15,
+        ),
+        mutation=PM(
+            eta=20,
+        ),
+        eliminate_duplicates=True,
     )
 
-    gamma = 0.002
-
-    # Mức đầu tư D tối thiểu để từng vùng đạt lambda*M
-    digital_lower = np.maximum(
-        0.0,
-        (
-            fairness_lambda
-            * target_max_index
-            - D0
-        )
-        / gamma,
+    result = minimize(
+        RegionalParetoProblem(),
+        algorithm,
+        get_termination(
+            "n_gen",
+            int(generations),
+        ),
+        seed=int(seed),
+        save_history=False,
+        verbose=False,
     )
 
-    # Mức đầu tư D tối đa để không vượt quá M
-    digital_upper_global = np.maximum(
-        digital_lower,
-        (
-            target_max_index
-            - D0
-        )
-        / gamma,
+    if result.X is None or result.F is None:
+        return pd.DataFrame(), np.empty((0, 24))
+
+    x_values = np.atleast_2d(
+        np.asarray(result.X, dtype=float)
     )
-
-    # Ngân sách tối thiểu vùng phải đủ chứa D tối thiểu
-    region_lower = np.maximum(
-        5000.0,
-        digital_lower,
+    f_values = np.atleast_2d(
+        np.asarray(result.F, dtype=float)
     )
-
-    region_upper = np.full(
-        6,
-        12000.0,
-    )
-
-    if region_lower.sum() > 50000:
-        empty = pd.DataFrame(
-            columns=[
-                "Growth",
-                "Inequality",
-                "Emission",
-                "DataRisk",
-                "FairnessRatio",
-            ]
-        )
-        return empty, []
-
-    attempts = 0
-    max_attempts = n_samples * 20
-
-    while (
-        len(accepted_rows) < n_samples
-        and attempts < max_attempts
-    ):
-        attempts += 1
-
-        # -------------------------------------------------
-        # Bước 1. Sinh tổng ngân sách từng vùng
-        # -------------------------------------------------
-        region_budget = allocate_bounded(
-            total=50000.0,
-            lower=region_lower,
-            upper=region_upper,
-        )
-
-        if region_budget is None:
-            continue
-
-        # -------------------------------------------------
-        # Bước 2. Phân bổ chuyển đổi số D
-        # -------------------------------------------------
-        digital_upper = np.minimum(
-            digital_upper_global,
-            region_budget,
-        )
-
-        min_digital_total = float(
-            digital_lower.sum()
-        )
-
-        # Phải chừa tối thiểu 12.000 cho nhân lực H
-        max_digital_total = min(
-            float(
-                digital_upper.sum()
-            ),
-            50000.0 - 12000.0,
-        )
-
-        if (
-            max_digital_total
-            < min_digital_total
-        ):
-            continue
-
-        digital_total = (
-            min_digital_total
-            + rng.beta(
-                1.5,
-                3.0,
-            )
-            * (
-                max_digital_total
-                - min_digital_total
-            )
-        )
-
-        x_digital = allocate_bounded(
-            total=digital_total,
-            lower=digital_lower,
-            upper=digital_upper,
-        )
-
-        if x_digital is None:
-            continue
-
-        remaining_after_digital = (
-            region_budget
-            - x_digital
-        )
-
-        # -------------------------------------------------
-        # Bước 3. Phân bổ nhân lực H
-        # -------------------------------------------------
-        max_human_total = float(
-            remaining_after_digital.sum()
-        )
-
-        if max_human_total < 12000.0:
-            continue
-
-        human_total = (
-            12000.0
-            + rng.beta(
-                1.5,
-                3.0,
-            )
-            * (
-                max_human_total
-                - 12000.0
-            )
-        )
-
-        x_human = allocate_bounded(
-            total=human_total,
-            lower=np.zeros(6),
-            upper=remaining_after_digital,
-        )
-
-        if x_human is None:
-            continue
-
-        # -------------------------------------------------
-        # Bước 4. Phần còn lại chia cho I và AI
-        # -------------------------------------------------
-        remaining_for_i_ai = (
-            remaining_after_digital
-            - x_human
-        )
-
-        infrastructure_share = rng.beta(
-            1.4,
-            1.4,
-            size=6,
-        )
-
-        x_infrastructure = (
-            remaining_for_i_ai
-            * infrastructure_share
-        )
-
-        x_ai = (
-            remaining_for_i_ai
-            - x_infrastructure
-        )
-
-        X = np.column_stack(
-            [
-                x_infrastructure,
-                x_digital,
-                x_ai,
-                x_human,
-            ]
-        )
-
-        # -------------------------------------------------
-        # Bước 5. Kiểm tra toàn bộ ràng buộc
-        # -------------------------------------------------
-        regional_totals = X.sum(
-            axis=1
-        )
-
-        digital_after = (
-            D0
-            + gamma
-            * X[:, 1]
-        )
-
-        fairness_ratio = float(
-            digital_after.min()
-            / max(
-                digital_after.max(),
-                1e-12,
-            )
-        )
-
-        feasible = (
-            abs(
-                X.sum()
-                - 50000.0
-            )
-            <= 1e-4
-            and np.all(
-                regional_totals
-                >= 5000.0 - 1e-5
-            )
-            and np.all(
-                regional_totals
-                <= 12000.0 + 1e-5
-            )
-            and X[:, 3].sum()
-            >= 12000.0 - 1e-5
-            and fairness_ratio
-            >= fairness_lambda - 1e-8
-        )
-
-        if not feasible:
-            continue
-
-        (
-            growth,
-            inequality,
-            emission,
-            data_risk,
-        ) = _b7_objectives(
-            X,
-            beta,
-            emission_coef,
-            data_risk_coef,
-            human_protection_coef,
-        )
-
-        accepted_rows.append(
-            [
-                growth,
-                inequality,
-                emission,
-                data_risk,
-                fairness_ratio,
-            ]
-        )
-
-        accepted_matrices.append(
-            X
-        )
-
-    if not accepted_rows:
-        empty = pd.DataFrame(
-            columns=[
-                "Growth",
-                "Inequality",
-                "Emission",
-                "DataRisk",
-                "FairnessRatio",
-            ]
-        )
-        return empty, []
 
     objective_df = pd.DataFrame(
-        accepted_rows,
-        columns=[
-            "Growth",
-            "Inequality",
-            "Emission",
-            "DataRisk",
-            "FairnessRatio",
-        ],
+        {
+            "Growth": -f_values[:, 0],
+            "Inequality": f_values[:, 1],
+            "Emission": f_values[:, 2],
+            "DataRisk": f_values[:, 3],
+        }
     )
 
-    # Chuyển tất cả mục tiêu về dạng MIN để lọc Pareto
-    cost_matrix = np.column_stack(
-        [
-            -objective_df["Growth"],
-            objective_df["Inequality"],
-            objective_df["Emission"],
-            objective_df["DataRisk"],
-        ]
-    )
-
-    pareto_mask = _b7_non_dominated_mask(
-        cost_matrix
-    )
-
-    pareto_df = (
-        objective_df.loc[
-            pareto_mask
-        ]
-        .reset_index(
-            drop=True
-        )
-    )
-
-    pareto_matrices = [
-        accepted_matrices[i]
-        for i, is_pareto
-        in enumerate(
-            pareto_mask
-        )
-        if is_pareto
+    objective_df["FairnessRatio"] = [
+        _b7_objectives(x)["FairnessRatio"]
+        for x in x_values
     ]
 
-    pareto_df[
-        "Growth_norm"
-    ] = minmax(
-        pareto_df["Growth"]
+    objective_df["SolutionID"] = np.arange(
+        1,
+        len(objective_df) + 1,
     )
 
-    pareto_df[
-        "Inequality_norm"
-    ] = minmax(
-        pareto_df["Inequality"]
-    )
-
-    pareto_df[
-        "Emission_norm"
-    ] = minmax(
-        pareto_df["Emission"]
-    )
-
-    pareto_df[
-        "DataRisk_norm"
-    ] = minmax(
-        pareto_df["DataRisk"]
-    )
-
-    return (
-        pareto_df,
-        pareto_matrices,
-    )
+    return objective_df, x_values
 
 
-
-def _b7_compromise_score(
+def _b7_topsis_compromise(
     pareto_df,
     weights,
 ):
     """
-    Tính điểm thỏa hiệp:
-    Growth càng cao càng tốt;
-    ba mục tiêu còn lại càng thấp càng tốt.
+    Chọn nghiệm thỏa hiệp bằng TOPSIS thật.
     """
-    weights = np.asarray(
-        weights,
-        dtype=float,
-    )
+    weights = np.asarray(weights, dtype=float)
+    weights = weights / max(weights.sum(), 1e-12)
 
-    weights = (
-        weights
-        / max(
-            weights.sum(),
-            1e-12,
-        )
-    )
-
-    return (
-        weights[0]
-        * pareto_df[
-            "Growth_norm"
-        ]
-        + weights[1]
-        * (
-            1
-            - pareto_df[
-                "Inequality_norm"
-            ]
-        )
-        + weights[2]
-        * (
-            1
-            - pareto_df[
-                "Emission_norm"
-            ]
-        )
-        + weights[3]
-        * (
-            1
-            - pareto_df[
-                "DataRisk_norm"
-            ]
-        )
-    )
-
-
-def page_7():
-    hero(
-        "Bài 7 — Tối ưu đa mục tiêu Pareto với khung NSGA-II",
-        "Trình bày đầy đủ các mục 7.1-7.5: tăng trưởng, bao trùm, phát thải, rủi ro dữ liệu, tập Pareto, nghiệm thỏa hiệp và chi phí cơ hội.",
-        ["7.1-7.5", "Pareto", "NSGA-II", "4 objectives", "Compromise solution"],
-    )
-
-    (
-        regions,
-        items,
-        beta,
-        D0,
-        emission_coef,
-        data_risk_coef,
-        human_protection_coef,
-    ) = _b7_parameters()
-
-    # =====================================================
-    # 7.1. Bối cảnh Việt Nam
-    # =====================================================
-    st.markdown(
-        "## 7.1. Bối cảnh Việt Nam"
-    )
-
-    st.markdown(
-        """
-        Chính sách kinh tế số không chỉ tối đa hóa tăng trưởng. Nhà hoạch định còn phải
-        cân bằng giữa **bao trùm vùng miền**, **phát thải** và **an ninh dữ liệu**.
-
-        Các mục tiêu này xung đột với nhau nên không tồn tại một nghiệm tối ưu tuyệt đối.
-        Thay vào đó, mô hình tạo ra **tập nghiệm Pareto**: không thể cải thiện một mục tiêu
-        mà không làm ít nhất một mục tiêu khác xấu đi.
-        """
-    )
-
-    # =====================================================
-    # 7.2. Mô hình toán học
-    # =====================================================
-    st.markdown(
-        "## 7.2. Mô hình toán học đa mục tiêu"
-    )
-
-    st.markdown(
-        "### Mục tiêu 1 — Tối đa hóa tăng trưởng"
-    )
-
-    st.latex(
-        r"\max f_1(x)="
-        r"\sum_r\sum_j"
-        r"\beta_{j,r}x_{j,r}"
-    )
-
-    st.markdown(
-        "### Mục tiêu 2 — Tối thiểu hóa bất bình đẳng vùng"
-    )
-
-    st.latex(
-        r"\min f_2(x)=G(x)"
-    )
-
-    st.markdown(
-        "### Mục tiêu 3 — Tối thiểu hóa phát thải"
-    )
-
-    st.latex(
-        r"\min f_3(x)="
-        r"\sum_re_r"
-        r"(x_{I,r}+x_{AI,r})"
-    )
-
-    st.markdown(
-        "### Mục tiêu 4 — Tối thiểu hóa rủi ro dữ liệu"
-    )
-
-    st.latex(
-        r"\min f_4(x)="
-        r"\sum_r\rho_rx_{AI,r}"
-        r"-\sum_r\sigma_rx_{H,r}"
-    )
-
-    st.markdown(
-        "### Các ràng buộc"
-    )
-
-    st.latex(
-        r"\sum_r\sum_jx_{j,r}"
-        r"\leq50{,}000"
-    )
-
-    st.latex(
-        r"5{,}000"
-        r"\leq\sum_jx_{j,r}"
-        r"\leq12{,}000"
-    )
-
-    st.latex(
-        r"\sum_rx_{H,r}"
-        r"\geq12{,}000"
-    )
-
-    st.latex(
-        r"x_{j,r}\geq0"
-    )
-
-    st.warning(
-        "Với bộ D₀ hiện tại, γ=0,002 và trần 12.000 tỷ/vùng, "
-        "ngưỡng công bằng λ=0,70 không tạo được nghiệm khả thi cho Tây Nguyên. "
-        "Dashboard dùng λ=0,68 để minh họa tập Pareto khả thi; báo cáo nên nêu rõ điều chỉnh này."
-    )
-
-    # =====================================================
-    # 7.3. Bảng tham số
-    # =====================================================
-    st.markdown(
-        "## 7.3. Bảng tham số bổ sung"
-    )
-
-    parameter_table = pd.DataFrame(
-        {
-            "Vùng": regions,
-            "eᵣ - Phát thải": emission_coef,
-            "ρᵣ - Rủi ro dữ liệu": data_risk_coef,
-            "σᵣ - Bảo vệ bởi nhân lực": human_protection_coef,
-            "Digital Index ban đầu": D0,
-        }
-    )
-
-    st.dataframe(
-        parameter_table,
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    n_samples = st.slider(
-        "Số nghiệm khả thi dùng để xấp xỉ Pareto",
-        min_value=800,
-        max_value=4000,
-        value=2200,
-        step=400,
-        key="b7_samples",
-    )
-
-    pareto_df, pareto_matrices = _b7_sample_pareto(
-        n_samples=n_samples,
-        seed=42,
-        fairness_lambda=0.68,
-    )
-
-    if pareto_df.empty:
-        st.error(
-            "Không tạo được tập nghiệm Pareto. "
-            "Hãy giảm số mẫu hoặc kiểm tra lại ràng buộc."
-        )
-        return
-
-    # Trọng số thỏa hiệp mặc định
-    default_weights = np.array(
-        [0.40, 0.25, 0.20, 0.15],
-        dtype=float,
-    )
-
-    pareto_df = pareto_df.copy()
-
-    pareto_df[
-        "CompromiseScore"
-    ] = _b7_compromise_score(
-        pareto_df,
-        default_weights,
-    )
-
-    # =====================================================
-    # 7.4. Yêu cầu lập trình
-    # =====================================================
-    st.markdown(
-        "## 7.4. Yêu cầu lập trình"
-    )
-
-    tab741, tab742, tab743, tab744 = st.tabs(
-        [
-            "7.4.1 - Pareto/NSGA-II",
-            "7.4.2 - Trực quan",
-            "7.4.3 - Nghiệm thỏa hiệp",
-            "7.4.4 - Chi phí cơ hội",
-        ]
-    )
-
-    # -----------------------------------------------------
-    # 7.4.1
-    # -----------------------------------------------------
-    with tab741:
-        st.markdown(
-            "### Câu 7.4.1. Xây dựng tập nghiệm Pareto"
-        )
-
-        kpi_cards(
-            [
-                (
-                    "Số nghiệm Pareto",
-                    f"{len(pareto_df)}",
-                    "nghiệm không bị trội",
-                ),
-                (
-                    "Growth lớn nhất",
-                    f"{pareto_df['Growth'].max():,.0f}",
-                    "GDP gain",
-                ),
-                (
-                    "Inequality nhỏ nhất",
-                    f"{pareto_df['Inequality'].min():,.0f}",
-                    "độ lệch vùng",
-                ),
-                (
-                    "Fairness thấp nhất",
-                    f"{pareto_df['FairnessRatio'].min():.3f}",
-                    "yêu cầu ≥0,68",
-                ),
-            ]
-        )
-
-        st.dataframe(
-            pareto_df.sort_values(
-                "CompromiseScore",
-                ascending=False,
-            ).head(20),
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        st.info(
-            "Dashboard dùng lấy mẫu khả thi và lọc nondominated để chạy ổn định trên Streamlit. "
-            "Khung mã NSGA-II bằng pymoo được cung cấp bên dưới để đáp ứng yêu cầu phương pháp."
-        )
-
-        with st.expander(
-            "Xem khung mã pymoo/NSGA-II"
-        ):
-            st.code(
-                """from pymoo.core.problem import ElementwiseProblem
-from pymoo.algorithms.moo.nsga2 import NSGA2
-from pymoo.optimize import minimize
-
-class VietnamDigitalProblem(
-    ElementwiseProblem
-):
-    def __init__(self):
-        super().__init__(
-            n_var=24,
-            n_obj=4,
-            n_ieq_constr=constraints_count,
-            xl=np.zeros(24),
-            xu=np.ones(24) * 12000
-        )
-
-    def _evaluate(
-        self,
-        x,
-        out,
-        *args,
-        **kwargs
-    ):
-        X = x.reshape(6, 4)
-
-        growth = (
-            beta * X
-        ).sum()
-
-        inequality = np.abs(
-            X.sum(axis=1)
-            - X.sum(axis=1).mean()
-        ).mean()
-
-        emission = (
-            e * (
-                X[:, 0]
-                + X[:, 2]
-            )
-        ).sum()
-
-        data_risk = (
-            rho * X[:, 2]
-        ).sum() - (
-            sigma * X[:, 3]
-        ).sum()
-
-        out["F"] = [
-            -growth,
-            inequality,
-            emission,
-            data_risk
-        ]
-
-        out["G"] = constraint_vector
-
-algorithm = NSGA2(
-    pop_size=100
-)
-
-result = minimize(
-    VietnamDigitalProblem(),
-    algorithm,
-    ("n_gen", 200),
-    seed=42,
-    verbose=False
-)""",
-                language="python",
-            )
-
-    # -----------------------------------------------------
-    # 7.4.2
-    # -----------------------------------------------------
-    with tab742:
-        st.markdown(
-            "### Câu 7.4.2. Vẽ đường biên Pareto"
-        )
-
-        fig_3d = px.scatter_3d(
-            pareto_df,
-            x="Growth",
-            y="Inequality",
-            z="Emission",
-            color="DataRisk",
-            size="CompromiseScore",
-            template=PLOT_TEMPLATE,
-            title="Đường biên Pareto 3D",
-            hover_data=[
-                "FairnessRatio",
-                "CompromiseScore",
-            ],
-        )
-
-        fig_3d.update_layout(
-            height=650,
-            margin=dict(
-                l=0,
-                r=0,
-                t=54,
-                b=0,
-            ),
-        )
-
-        st.plotly_chart(
-            fig_3d,
-            use_container_width=True,
-        )
-
-        parallel_data = pareto_df[
-            [
-                "Growth",
-                "Inequality",
-                "Emission",
-                "DataRisk",
-                "FairnessRatio",
-                "CompromiseScore",
-            ]
-        ].copy()
-
-        fig_parallel = px.parallel_coordinates(
-            parallel_data,
-            dimensions=[
-                "Growth",
-                "Inequality",
-                "Emission",
-                "DataRisk",
-                "FairnessRatio",
-            ],
-            color="CompromiseScore",
-            title="Parallel coordinates của tập Pareto",
-        )
-
-        fig_parallel.update_layout(
-            height=560,
-        )
-
-        st.plotly_chart(
-            fig_parallel,
-            use_container_width=True,
-        )
-
-    # -----------------------------------------------------
-    # 7.4.3
-    # -----------------------------------------------------
-    with tab743:
-        st.markdown(
-            "### Câu 7.4.3. Chọn nghiệm thỏa hiệp bằng trọng số chính sách"
-        )
-
-        c1, c2, c3, c4 = st.columns(4)
-
-        w_growth = c1.slider(
-            "Growth",
-            0.0,
-            1.0,
-            0.40,
-            0.05,
-            key="b7_w_growth",
-        )
-
-        w_inclusion = c2.slider(
-            "Bao trùm",
-            0.0,
-            1.0,
-            0.25,
-            0.05,
-            key="b7_w_inclusion",
-        )
-
-        w_emission = c3.slider(
-            "Môi trường",
-            0.0,
-            1.0,
-            0.20,
-            0.05,
-            key="b7_w_emission",
-        )
-
-        w_data = c4.slider(
-            "An ninh dữ liệu",
-            0.0,
-            1.0,
-            0.15,
-            0.05,
-            key="b7_w_data",
-        )
-
-        compromise_weights = np.array(
-            [
-                w_growth,
-                w_inclusion,
-                w_emission,
-                w_data,
-            ]
-        )
-
-        if compromise_weights.sum() <= 0:
-            st.error(
-                "Tổng trọng số phải lớn hơn 0."
-            )
-            return
-
-        compromise_score = _b7_compromise_score(
-            pareto_df,
-            compromise_weights,
-        )
-
-        best_position = int(
-            np.argmax(
-                compromise_score.to_numpy()
-            )
-        )
-
-        best_row = pareto_df.iloc[
-            best_position
-        ].copy()
-
-        best_matrix = pareto_matrices[
-            best_position
-        ]
-
-        allocation_table = pd.DataFrame(
-            best_matrix,
-            columns=items,
-        )
-
-        allocation_table.insert(
-            0,
-            "Vùng",
-            regions,
-        )
-
-        allocation_table[
-            "Tổng vùng"
-        ] = best_matrix.sum(
-            axis=1
-        )
-
-        kpi_cards(
-            [
-                (
-                    "Growth",
-                    f"{best_row['Growth']:,.0f}",
-                    "mục tiêu tối đa hóa",
-                ),
-                (
-                    "Inequality",
-                    f"{best_row['Inequality']:,.0f}",
-                    "mục tiêu tối thiểu hóa",
-                ),
-                (
-                    "Emission",
-                    f"{best_row['Emission']:,.0f}",
-                    "mục tiêu tối thiểu hóa",
-                ),
-                (
-                    "Data risk",
-                    f"{best_row['DataRisk']:,.0f}",
-                    "mục tiêu tối thiểu hóa",
-                ),
-            ]
-        )
-
-        st.dataframe(
-            allocation_table,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        heatmap = px.imshow(
-            pd.DataFrame(
-                best_matrix,
-                index=regions,
-                columns=items,
-            ),
-            text_auto=".0f",
-            aspect="auto",
-            color_continuous_scale="RdPu",
-            template=PLOT_TEMPLATE,
-            title="Phân bổ của nghiệm thỏa hiệp",
-        )
-
-        heatmap.update_layout(
-            height=560,
-            margin=dict(
-                l=10,
-                r=10,
-                t=54,
-                b=10,
-            ),
-        )
-
-        st.plotly_chart(
-            heatmap,
-            use_container_width=True,
-        )
-
-        st.info(
-            f"Tỷ lệ công bằng của nghiệm thỏa hiệp là "
-            f"**{best_row['FairnessRatio']:.3f}**."
-        )
-
-    # -----------------------------------------------------
-    # 7.4.4
-    # -----------------------------------------------------
-    with tab744:
-        st.markdown(
-            "### Câu 7.4.4. Chi phí cơ hội của nghiệm tăng trưởng cao nhất"
-        )
-
-        growth_position = int(
-            pareto_df[
-                "Growth"
-            ].to_numpy().argmax()
-        )
-
-        default_best_position = int(
-            pareto_df[
-                "CompromiseScore"
-            ].to_numpy().argmax()
-        )
-
-        growth_row = pareto_df.iloc[
-            growth_position
-        ]
-
-        compromise_row = pareto_df.iloc[
-            default_best_position
-        ]
-
-        comparison = pd.DataFrame(
-            {
-                "Nghiệm": [
-                    "Tăng trưởng cao nhất",
-                    "Thỏa hiệp 0,40-0,25-0,20-0,15",
-                ],
-                "Growth": [
-                    growth_row["Growth"],
-                    compromise_row["Growth"],
-                ],
-                "Inequality": [
-                    growth_row["Inequality"],
-                    compromise_row["Inequality"],
-                ],
-                "Emission": [
-                    growth_row["Emission"],
-                    compromise_row["Emission"],
-                ],
-                "DataRisk": [
-                    growth_row["DataRisk"],
-                    compromise_row["DataRisk"],
-                ],
-                "FairnessRatio": [
-                    growth_row["FairnessRatio"],
-                    compromise_row["FairnessRatio"],
-                ],
-            }
-        )
-
-        st.dataframe(
-            comparison,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        growth_gain = (
-            growth_row["Growth"]
-            - compromise_row["Growth"]
-        )
-
-        inequality_change = (
-            growth_row["Inequality"]
-            - compromise_row["Inequality"]
-        )
-
-        emission_change = (
-            growth_row["Emission"]
-            - compromise_row["Emission"]
-        )
-
-        data_risk_change = (
-            growth_row["DataRisk"]
-            - compromise_row["DataRisk"]
-        )
-
-        kpi_cards(
-            [
-                (
-                    "Growth tăng thêm",
-                    f"{growth_gain:,.0f}",
-                    "so với nghiệm thỏa hiệp",
-                ),
-                (
-                    "Inequality thay đổi",
-                    f"{inequality_change:+,.0f}",
-                    "dương là xấu hơn",
-                ),
-                (
-                    "Emission thay đổi",
-                    f"{emission_change:+,.0f}",
-                    "dương là xấu hơn",
-                ),
-                (
-                    "Data risk thay đổi",
-                    f"{data_risk_change:+,.0f}",
-                    "dương là xấu hơn",
-                ),
-            ]
-        )
-
-        long_compare = comparison.melt(
-            id_vars="Nghiệm",
-            value_vars=[
-                "Growth",
-                "Inequality",
-                "Emission",
-                "DataRisk",
-            ],
-            var_name="Mục tiêu",
-            value_name="Giá trị",
-        )
-
-        fig_compare = px.bar(
-            long_compare,
-            x="Mục tiêu",
-            y="Giá trị",
-            color="Nghiệm",
-            barmode="group",
-            template=PLOT_TEMPLATE,
-            title="Đánh đổi giữa tăng trưởng và các mục tiêu còn lại",
-        )
-
-        fig_compare.update_layout(
-            height=480,
-            margin=dict(
-                l=10,
-                r=10,
-                t=54,
-                b=10,
-            ),
-        )
-
-        st.plotly_chart(
-            fig_compare,
-            use_container_width=True,
-        )
-
-    # =====================================================
-    # Tải kết quả
-    # =====================================================
-    export_columns = [
+    criteria = [
         "Growth",
         "Inequality",
         "Emission",
         "DataRisk",
-        "FairnessRatio",
-        "CompromiseScore",
+    ]
+    benefit_flags = [
+        True,
+        False,
+        False,
+        False,
     ]
 
+    scores = topsis_score(
+        pareto_df,
+        criteria,
+        weights,
+        benefit_flags,
+    )
+
+    best_position = int(
+        np.argmax(scores)
+    )
+
+    result = pareto_df.copy()
+    result["TOPSIS"] = scores
+    result["Rank"] = (
+        result["TOPSIS"]
+        .rank(
+            ascending=False,
+            method="min",
+        )
+        .astype(int)
+    )
+
+    return result, best_position
+
+
+def _b7_solution_table(
+    decision_vector,
+):
+    regions, items, _, _ = region_beta_matrix()
+    x = _b7_decode(decision_vector)
+
+    table = pd.DataFrame(
+        x,
+        columns=items,
+    )
+    table.insert(
+        0,
+        "Vùng",
+        regions,
+    )
+    table["Tổng vùng"] = x.sum(axis=1)
+
+    return table
+
+
+def page_7():
+    hero(
+        "Bài 7 — Tối ưu đa mục tiêu Pareto bằng NSGA-II",
+        "Chạy NSGA-II thật với 24 biến và 4 mục tiêu; xây dựng tập Pareto, chọn nghiệm thỏa hiệp bằng TOPSIS và lượng hóa chi phí cơ hội chính sách.",
+        ["7.1-7.5", "NSGA-II", "Pareto", "TOPSIS", "4 objectives"],
+    )
+
+    st.markdown("## 7.1. Bối cảnh Việt Nam")
+    st.markdown(
+        """
+        Phân bổ ngân sách chuyển đổi số theo vùng tạo ra nhiều đánh đổi:
+        tăng trưởng cao có thể làm gia tăng tập trung, phát thải từ hạ tầng số
+        hoặc rủi ro dữ liệu. Vì vậy không tồn tại một nghiệm tối ưu duy nhất;
+        nhà hoạch định cần quan sát tập nghiệm Pareto và chọn phương án thỏa hiệp.
+        """
+    )
+
+    st.markdown("## 7.2. Mô hình đa mục tiêu")
+    st.latex(
+        r"\max f_1(x)=\sum_{r,j}\beta_{rj}x_{rj}"
+    )
+    st.latex(
+        r"\min f_2(x)=Gini(D_r+\gamma x_{D,r})"
+    )
+    st.latex(
+        r"\min f_3(x)=\sum_{r,j}e_jx_{rj}"
+    )
+    st.latex(
+        r"\min f_4(x)=\sum_{r,j}\rho_jx_{rj}"
+    )
+
+    st.markdown(
+        """
+        Ràng buộc giữ nguyên logic Bài 4: tổng ngân sách 50.000,
+        mỗi vùng từ 5.000 đến 12.000, nhân lực tối thiểu 12.000,
+        và công bằng Digital Index. Do λ=0,70 không khả thi với dữ liệu gốc,
+        NSGA-II sử dụng λ=0,68 và báo rõ đây là kịch bản hiệu chỉnh.
+        """
+    )
+
+    st.markdown("## 7.3. Cấu hình NSGA-II")
+
+    c1, c2, c3 = st.columns(3)
+
+    population_size = c1.select_slider(
+        "Population size",
+        options=[40, 60, 80, 100, 120],
+        value=100,
+        key="b7_population_size",
+    )
+
+    generations = c2.select_slider(
+        "Số thế hệ",
+        options=[50, 100, 150, 200],
+        value=200,
+        key="b7_generations",
+    )
+
+    seed = c3.number_input(
+        "Random seed",
+        min_value=1,
+        max_value=9999,
+        value=42,
+        step=1,
+        key="b7_seed",
+    )
+
+    with st.spinner(
+        "Đang chạy NSGA-II và xây dựng tập Pareto..."
+    ):
+        pareto_df, decision_matrix = _b7_run_nsga2(
+            population_size=int(population_size),
+            generations=int(generations),
+            seed=int(seed),
+            fairness_lambda=0.68,
+        )
+
+    if pareto_df.empty:
+        st.error(
+            "NSGA-II không tạo được nghiệm khả thi. "
+            "Hãy kiểm tra pymoo hoặc giảm yêu cầu công bằng."
+        )
+        return
+
+    kpi_cards(
+        [
+            (
+                "Số nghiệm Pareto",
+                f"{len(pareto_df):,}",
+                "NSGA-II không trội",
+            ),
+            (
+                "Growth lớn nhất",
+                f"{pareto_df['Growth'].max():,.1f}",
+                "mục tiêu 1",
+            ),
+            (
+                "Inequality thấp nhất",
+                f"{pareto_df['Inequality'].min():.4f}",
+                "mục tiêu 2",
+            ),
+            (
+                "Fairness thấp nhất",
+                f"{pareto_df['FairnessRatio'].min():.4f}",
+                "phải ≥ 0,68",
+            ),
+        ]
+    )
+
+    st.markdown("## 7.4. Kết quả lập trình")
+
+    tab1, tab2, tab3, tab4 = st.tabs(
+        [
+            "7.4.1 - Tập Pareto",
+            "7.4.2 - TOPSIS thỏa hiệp",
+            "7.4.3 - Phân bổ nghiệm chọn",
+            "7.4.4 - Chi phí cơ hội",
+        ]
+    )
+
+    with tab1:
+        fig = px.scatter_3d(
+            pareto_df,
+            x="Growth",
+            y="Emission",
+            z="DataRisk",
+            color="Inequality",
+            hover_data=[
+                "SolutionID",
+                "FairnessRatio",
+            ],
+            template=PLOT_TEMPLATE,
+            title="Tập Pareto NSGA-II",
+        )
+        fig.update_layout(
+            height=620,
+        )
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+        )
+
+        parallel = px.parallel_coordinates(
+            pareto_df[
+                [
+                    "Growth",
+                    "Inequality",
+                    "Emission",
+                    "DataRisk",
+                    "FairnessRatio",
+                ]
+            ],
+            color="Growth",
+            title="Quan hệ đánh đổi giữa bốn mục tiêu",
+        )
+        parallel.update_layout(
+            height=540,
+        )
+        st.plotly_chart(
+            parallel,
+            use_container_width=True,
+        )
+
+        st.dataframe(
+            pareto_df.sort_values(
+                "Growth",
+                ascending=False,
+            ).head(30),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    with tab2:
+        st.markdown(
+            "### Chọn trọng số TOPSIS"
+        )
+
+        cols = st.columns(4)
+        labels = [
+            "Growth",
+            "Inequality",
+            "Emission",
+            "Data risk",
+        ]
+        defaults = [
+            0.40,
+            0.25,
+            0.20,
+            0.15,
+        ]
+
+        weights = np.array(
+            [
+                col.slider(
+                    label,
+                    0.05,
+                    0.70,
+                    float(default),
+                    0.05,
+                    key=f"b7_weight_{i}",
+                )
+                for i, (
+                    col,
+                    label,
+                    default,
+                ) in enumerate(
+                    zip(
+                        cols,
+                        labels,
+                        defaults,
+                    )
+                )
+            ],
+            dtype=float,
+        )
+
+        ranked_df, best_position = (
+            _b7_topsis_compromise(
+                pareto_df,
+                weights,
+            )
+        )
+
+        best_row = ranked_df.iloc[
+            best_position
+        ]
+
+        kpi_cards(
+            [
+                (
+                    "Solution ID",
+                    str(
+                        int(
+                            best_row["SolutionID"]
+                        )
+                    ),
+                    "nghiệm TOPSIS",
+                ),
+                (
+                    "Growth",
+                    f"{best_row['Growth']:,.1f}",
+                    "càng cao càng tốt",
+                ),
+                (
+                    "Inequality",
+                    f"{best_row['Inequality']:.4f}",
+                    "càng thấp càng tốt",
+                ),
+                (
+                    "TOPSIS",
+                    f"{best_row['TOPSIS']:.4f}",
+                    "hệ số gần lý tưởng",
+                ),
+            ]
+        )
+
+        top_ranked = ranked_df.sort_values(
+            "Rank"
+        ).head(15)
+
+        st.dataframe(
+            top_ranked[
+                [
+                    "SolutionID",
+                    "Growth",
+                    "Inequality",
+                    "Emission",
+                    "DataRisk",
+                    "FairnessRatio",
+                    "TOPSIS",
+                    "Rank",
+                ]
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    with tab3:
+        ranked_df, best_position = (
+            _b7_topsis_compromise(
+                pareto_df,
+                np.array(
+                    [0.40, 0.25, 0.20, 0.15],
+                    dtype=float,
+                ),
+            )
+        )
+
+        chosen_vector = decision_matrix[
+            best_position
+        ]
+
+        allocation = _b7_solution_table(
+            chosen_vector
+        )
+
+        st.dataframe(
+            allocation,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        long_df = allocation.melt(
+            id_vars=[
+                "Vùng",
+                "Tổng vùng",
+            ],
+            value_vars=[
+                col
+                for col in allocation.columns
+                if col not in [
+                    "Vùng",
+                    "Tổng vùng",
+                ]
+            ],
+            var_name="Hạng mục",
+            value_name="Ngân sách",
+        )
+
+        fig = px.bar(
+            long_df,
+            x="Vùng",
+            y="Ngân sách",
+            color="Hạng mục",
+            barmode="stack",
+            template=PLOT_TEMPLATE,
+            title="Phân bổ của nghiệm thỏa hiệp",
+        )
+        fig.update_layout(
+            height=520,
+        )
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+        )
+
+        constraints = _b7_constraint_values(
+            chosen_vector,
+            fairness_lambda=0.68,
+        )
+
+        st.success(
+            "Nghiệm thỏa toàn bộ ràng buộc."
+            if np.max(constraints) <= 1e-5
+            else "Có ràng buộc chưa đạt do sai số thuật toán."
+        )
+
+    with tab4:
+        max_growth_row = pareto_df.loc[
+            pareto_df["Growth"].idxmax()
+        ]
+        min_inequality_row = pareto_df.loc[
+            pareto_df["Inequality"].idxmin()
+        ]
+        min_emission_row = pareto_df.loc[
+            pareto_df["Emission"].idxmin()
+        ]
+        min_risk_row = pareto_df.loc[
+            pareto_df["DataRisk"].idxmin()
+        ]
+
+        ranked_df, best_position = (
+            _b7_topsis_compromise(
+                pareto_df,
+                np.array(
+                    [0.40, 0.25, 0.20, 0.15],
+                    dtype=float,
+                ),
+            )
+        )
+        compromise = ranked_df.iloc[
+            best_position
+        ]
+
+        opportunity = pd.DataFrame(
+            {
+                "Phương án": [
+                    "Tăng trưởng cực đại",
+                    "Bất bình đẳng thấp nhất",
+                    "Phát thải thấp nhất",
+                    "Rủi ro dữ liệu thấp nhất",
+                    "Nghiệm thỏa hiệp",
+                ],
+                "Growth": [
+                    max_growth_row["Growth"],
+                    min_inequality_row["Growth"],
+                    min_emission_row["Growth"],
+                    min_risk_row["Growth"],
+                    compromise["Growth"],
+                ],
+                "Inequality": [
+                    max_growth_row["Inequality"],
+                    min_inequality_row["Inequality"],
+                    min_emission_row["Inequality"],
+                    min_risk_row["Inequality"],
+                    compromise["Inequality"],
+                ],
+                "Emission": [
+                    max_growth_row["Emission"],
+                    min_inequality_row["Emission"],
+                    min_emission_row["Emission"],
+                    min_risk_row["Emission"],
+                    compromise["Emission"],
+                ],
+                "DataRisk": [
+                    max_growth_row["DataRisk"],
+                    min_inequality_row["DataRisk"],
+                    min_emission_row["DataRisk"],
+                    min_risk_row["DataRisk"],
+                    compromise["DataRisk"],
+                ],
+            }
+        )
+
+        opportunity[
+            "Chi phí tăng trưởng so với cực đại"
+        ] = (
+            max_growth_row["Growth"]
+            - opportunity["Growth"]
+        )
+
+        st.dataframe(
+            opportunity,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        fig = px.bar(
+            opportunity,
+            x="Phương án",
+            y="Chi phí tăng trưởng so với cực đại",
+            template=PLOT_TEMPLATE,
+            title="Chi phí cơ hội khi ưu tiên mục tiêu khác",
+        )
+        fig.update_layout(
+            height=450,
+        )
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+        )
+
     st.download_button(
-        "Tải tập Pareto Bài 7 dạng CSV",
-        data=pareto_df[
-            export_columns
-        ].to_csv(
+        "Tải tập Pareto Bài 7",
+        data=pareto_df.to_csv(
             index=False
         ).encode(
             "utf-8-sig"
         ),
-        file_name="bai7_pareto_front.csv",
+        file_name="bai7_pareto_nsga2.csv",
         mime="text/csv",
-        key="download_bai7",
+        key="download_bai7_nsga2",
     )
 
-    # =====================================================
-    # 7.5. Câu hỏi thảo luận chính sách
-    # =====================================================
-    st.markdown(
-        "## 7.5. Câu hỏi thảo luận chính sách"
-    )
+    st.markdown("## 7.5. Thảo luận chính sách")
 
     with st.expander(
-        "a) Đánh đổi tăng trưởng và bao trùm có rõ ràng không?",
+        "a) Vì sao không chọn trực tiếp nghiệm tăng trưởng cao nhất?",
         expanded=True,
     ):
-        correlation = pareto_df[
-            [
-                "Growth",
-                "Inequality",
-            ]
-        ].corr().iloc[
-            0,
-            1,
-        ]
-
         st.markdown(
-            f"Hệ số tương quan trong tập Pareto giữa Growth và Inequality là "
-            f"**{correlation:.3f}**. Nếu hệ số dương và đủ lớn, tăng trưởng cao hơn "
-            "thường đi kèm mức độ tập trung ngân sách vùng lớn hơn."
+            "Nghiệm tăng trưởng cao nhất có thể phải đánh đổi bằng bất bình đẳng, "
+            "phát thải hoặc rủi ro dữ liệu lớn. Tập Pareto buộc nhà hoạch định "
+            "trình bày công khai các đánh đổi thay vì che giấu chúng trong một điểm tổng hợp."
         )
 
     with st.expander(
-        "b) Bộ trọng số 0,40-0,25-0,20-0,15 có phù hợp không?",
+        "b) TOPSIS có thay thế quyết định chính trị không?",
         expanded=True,
     ):
         st.markdown(
-            "Bộ trọng số này ưu tiên tăng trưởng nhưng vẫn dành 60% tổng trọng số cho "
-            "bao trùm, môi trường và an ninh dữ liệu. Có thể tăng trọng số môi trường "
-            "để phản ánh cam kết COP26 hoặc tăng trọng số dữ liệu khi mở rộng AI quy mô lớn."
+            "Không. TOPSIS chỉ chuyển hệ trọng số chính sách thành một nghiệm thỏa hiệp. "
+            "Kết quả phải được kiểm tra độ nhạy và tham vấn các bên chịu tác động."
         )
 
     with st.expander(
-        "c) NSGA-II có thay thế quyết định chính trị không?",
+        "c) Vì sao dùng λ=0,68?",
         expanded=True,
     ):
         st.markdown(
-            "Không. NSGA-II chỉ tạo tập phương án và lượng hóa đánh đổi. "
-            "Lựa chọn cuối cùng vẫn cần tham vấn xã hội, đánh giá pháp lý, "
-            "trách nhiệm giải trình và quyết định của cơ quan có thẩm quyền."
+            "λ=0,70 không khả thi với Digital Index và trần vùng hiện tại. "
+            "Bài 7 dùng λ=0,68 sau khi Bài 4 đã chứng minh ngưỡng khả thi, "
+            "không phải tự ý thay đổi tham số mà không giải thích."
         )
 
 
