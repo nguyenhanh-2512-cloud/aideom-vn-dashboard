@@ -3870,92 +3870,1203 @@ def page_4():
         )
 
 
-def project_table():
+def _b5_project_table():
+    """Trả về dữ liệu 15 dự án chuyển đổi số cấp quốc gia."""
     rows = [
-        ("P1", "Trung tâm dữ liệu quốc gia Hòa Lạc", "Hạ tầng", 12000, 21500, 8500, 3500),
-        ("P2", "Trung tâm dữ liệu quốc gia phía Nam", "Hạ tầng", 11500, 20800, 7500, 4000),
-        ("P3", "Hệ thống 5G phủ sóng toàn quốc", "Hạ tầng", 18000, 32500, 12000, 6000),
-        ("P4", "Hệ thống định danh điện tử VNeID 2.0", "Chính phủ số", 4500, 9200, 3500, 1000),
-        ("P5", "Cổng dịch vụ công quốc gia v3", "Chính phủ số", 3200, 6800, 2500, 700),
-        ("P6", "Y tế số quốc gia", "Y tế số", 5800, 11400, 4000, 1800),
-        ("P7", "Giáo dục số K-12 toàn quốc", "Giáo dục", 6500, 12200, 4500, 2000),
-        ("P8", "Trung tâm AI quốc gia + supercomputing", "AI", 15000, 28500, 9000, 6000),
-        ("P9", "Sandbox tài chính số", "Tài chính số", 2500, 5800, 1800, 700),
-        ("P10", "Logistics thông minh + cảng biển số", "Logistics", 7200, 13800, 5000, 2200),
-        ("P11", "Nông nghiệp số ĐBSCL", "Nông nghiệp", 4800, 8500, 3500, 1300),
-        ("P12", "Đào tạo 50.000 kỹ sư AI/bán dẫn", "Nhân lực", 8500, 16200, 5500, 3000),
-        ("P13", "Khu CN bán dẫn Bắc Ninh - Bắc Giang", "Bán dẫn", 20000, 35000, 13000, 7000),
-        ("P14", "An ninh mạng quốc gia SOC", "An ninh", 3800, 7500, 2800, 1000),
-        ("P15", "Open Data + dữ liệu mở quốc gia", "Dữ liệu", 1500, 3800, 1200, 300),
+        {
+            "Mã": "P01",
+            "Dự án": "Trung tâm dữ liệu quốc gia",
+            "Trụ cột": "Hạ tầng",
+            "Chi phí": 18000.0,
+            "Lợi ích": 28000.0,
+            "Rủi ro": 0.12,
+            "Tiên quyết": "",
+            "Bao trùm": 0,
+        },
+        {
+            "Mã": "P02",
+            "Dự án": "Nền tảng điện toán đám mây Chính phủ",
+            "Trụ cột": "Hạ tầng",
+            "Chi phí": 12000.0,
+            "Lợi ích": 19500.0,
+            "Rủi ro": 0.10,
+            "Tiên quyết": "P01",
+            "Bao trùm": 0,
+        },
+        {
+            "Mã": "P03",
+            "Dự án": "Hạ tầng 5G và băng rộng vùng khó khăn",
+            "Trụ cột": "Hạ tầng",
+            "Chi phí": 15000.0,
+            "Lợi ích": 22500.0,
+            "Rủi ro": 0.15,
+            "Tiên quyết": "",
+            "Bao trùm": 1,
+        },
+        {
+            "Mã": "P04",
+            "Dự án": "Nền tảng chuyển đổi số cho SME",
+            "Trụ cột": "Ứng dụng",
+            "Chi phí": 9000.0,
+            "Lợi ích": 17000.0,
+            "Rủi ro": 0.18,
+            "Tiên quyết": "",
+            "Bao trùm": 1,
+        },
+        {
+            "Mã": "P05",
+            "Dự án": "Trung tâm tính toán AI quốc gia",
+            "Trụ cột": "AI",
+            "Chi phí": 20000.0,
+            "Lợi ích": 34500.0,
+            "Rủi ro": 0.28,
+            "Tiên quyết": "P01",
+            "Bao trùm": 0,
+        },
+        {
+            "Mã": "P06",
+            "Dự án": "Mô hình ngôn ngữ tiếng Việt",
+            "Trụ cột": "AI",
+            "Chi phí": 8000.0,
+            "Lợi ích": 16000.0,
+            "Rủi ro": 0.25,
+            "Tiên quyết": "P05",
+            "Bao trùm": 0,
+        },
+        {
+            "Mã": "P07",
+            "Dự án": "Trung tâm điều hành an ninh mạng quốc gia",
+            "Trụ cột": "An toàn số",
+            "Chi phí": 7000.0,
+            "Lợi ích": 13500.0,
+            "Rủi ro": 0.08,
+            "Tiên quyết": "",
+            "Bao trùm": 0,
+        },
+        {
+            "Mã": "P08",
+            "Dự án": "Đào tạo kỹ năng số cho một triệu lao động",
+            "Trụ cột": "Nhân lực",
+            "Chi phí": 11000.0,
+            "Lợi ích": 20500.0,
+            "Rủi ro": 0.10,
+            "Tiên quyết": "",
+            "Bao trùm": 1,
+        },
+        {
+            "Mã": "P09",
+            "Dự án": "Chương trình nhân lực bán dẫn và AI",
+            "Trụ cột": "Nhân lực",
+            "Chi phí": 10000.0,
+            "Lợi ích": 21000.0,
+            "Rủi ro": 0.17,
+            "Tiên quyết": "",
+            "Bao trùm": 0,
+        },
+        {
+            "Mã": "P10",
+            "Dự án": "Nông nghiệp thông minh và truy xuất nguồn gốc",
+            "Trụ cột": "Ứng dụng",
+            "Chi phí": 6000.0,
+            "Lợi ích": 12500.0,
+            "Rủi ro": 0.20,
+            "Tiên quyết": "P03",
+            "Bao trùm": 1,
+        },
+        {
+            "Mã": "P11",
+            "Dự án": "Logistics và cảng biển thông minh",
+            "Trụ cột": "Ứng dụng",
+            "Chi phí": 8500.0,
+            "Lợi ích": 15750.0,
+            "Rủi ro": 0.16,
+            "Tiên quyết": "P02",
+            "Bao trùm": 0,
+        },
+        {
+            "Mã": "P12",
+            "Dự án": "Y tế số và hồ sơ sức khỏe liên thông",
+            "Trụ cột": "Ứng dụng",
+            "Chi phí": 9500.0,
+            "Lợi ích": 17750.0,
+            "Rủi ro": 0.14,
+            "Tiên quyết": "P02",
+            "Bao trùm": 1,
+        },
+        {
+            "Mã": "P13",
+            "Dự án": "Trung tâm dữ liệu xanh",
+            "Trụ cột": "Hạ tầng",
+            "Chi phí": 6500.0,
+            "Lợi ích": 10800.0,
+            "Rủi ro": 0.09,
+            "Tiên quyết": "P01",
+            "Bao trùm": 0,
+        },
+        {
+            "Mã": "P14",
+            "Dự án": "Nền tảng dữ liệu mở quốc gia",
+            "Trụ cột": "Quản trị số",
+            "Chi phí": 5500.0,
+            "Lợi ích": 12800.0,
+            "Rủi ro": 0.11,
+            "Tiên quyết": "P02",
+            "Bao trùm": 1,
+        },
+        {
+            "Mã": "P15",
+            "Dự án": "Định danh số và xác thực điện tử 2.0",
+            "Trụ cột": "Quản trị số",
+            "Chi phí": 7500.0,
+            "Lợi ích": 15200.0,
+            "Rủi ro": 0.07,
+            "Tiên quyết": "",
+            "Bao trùm": 1,
+        },
     ]
-    return pd.DataFrame(rows, columns=["Mã", "Tên dự án", "Lĩnh vực", "Chi phí", "NPV", "Năm 1-2", "Năm 3-5"])
+
+    df = pd.DataFrame(rows)
+    df["Lợi ích kỳ vọng"] = df["Lợi ích"] * (1.0 - df["Rủi ro"])
+    df["B/C gộp"] = df["Lợi ích"] / df["Chi phí"]
+    df["B/C kỳ vọng"] = df["Lợi ích kỳ vọng"] / df["Chi phí"]
+    return df
 
 
-def solve_mip_bruteforce(budget=80000, require_p1p2=False):
-    df = project_table()
-    best = None
-    n = len(df)
-    for mask in range(1 << n):
-        y = np.array([(mask >> i) & 1 for i in range(n)])
-        if y.sum() < 7 or y.sum() > 11:
+def _b5_check_vector(selection, df, budget, max_projects=10):
+    """Kiểm tra toàn bộ ràng buộc với một vector nhị phân."""
+    selection = np.asarray(selection, dtype=int)
+    code_to_index = {
+        code: i
+        for i, code in enumerate(df["Mã"].tolist())
+    }
+
+    total_cost = float(
+        np.dot(selection, df["Chi phí"].to_numpy(dtype=float))
+    )
+    selected_count = int(selection.sum())
+
+    checks = []
+
+    checks.append(total_cost <= budget + 1e-7)
+    checks.append(selected_count <= int(max_projects))
+
+    # P07 là lớp an toàn số bắt buộc.
+    checks.append(selection[code_to_index["P07"]] == 1)
+
+    # Ít nhất một dự án nhân lực.
+    human_mask = (
+        df["Trụ cột"].to_numpy() == "Nhân lực"
+    ).astype(int)
+    checks.append(int(np.dot(selection, human_mask)) >= 1)
+
+    # Ít nhất hai dự án có tính bao trùm.
+    inclusive = df["Bao trùm"].to_numpy(dtype=int)
+    checks.append(int(np.dot(selection, inclusive)) >= 2)
+
+    # Không quá bốn dự án hạ tầng.
+    infrastructure = (
+        df["Trụ cột"].to_numpy() == "Hạ tầng"
+    ).astype(int)
+    checks.append(int(np.dot(selection, infrastructure)) <= 4)
+
+    # Quan hệ tiên quyết.
+    for i, prerequisite in enumerate(df["Tiên quyết"].tolist()):
+        if prerequisite:
+            j = code_to_index[prerequisite]
+            checks.append(selection[i] <= selection[j])
+
+    # Nếu chọn trung tâm AI P05 thì phải có ít nhất một dự án nhân lực.
+    checks.append(
+        selection[code_to_index["P05"]]
+        <= int(np.dot(selection, human_mask))
+    )
+
+    return bool(all(checks))
+
+
+def _b5_solve_enumeration(
+    budget=80000.0,
+    risk_adjusted=False,
+    max_projects=10,
+):
+    """Fallback vét cạn cho 15 dự án, tối đa 2^15 tổ hợp."""
+    df = _b5_project_table()
+
+    objective_values = (
+        df["Lợi ích kỳ vọng"].to_numpy(dtype=float)
+        if risk_adjusted
+        else df["Lợi ích"].to_numpy(dtype=float)
+    )
+
+    best_objective = -np.inf
+    best_selection = None
+
+    for mask in range(1 << len(df)):
+        selection = np.array(
+            [(mask >> i) & 1 for i in range(len(df))],
+            dtype=int,
+        )
+
+        if not _b5_check_vector(
+            selection,
+            df,
+            budget=budget,
+            max_projects=max_projects,
+        ):
             continue
-        cost = (df["Chi phí"].values * y).sum()
-        cost12 = (df["Năm 1-2"].values * y).sum()
-        benefit = (df["NPV"].values * y).sum()
-        if cost > budget or cost12 > 40000:
-            continue
-        if y[0] + y[1] > 1:
-            continue
-        if require_p1p2 and (y[0] + y[1] < 2):
-            continue
-        if y[7] > y[11]:
-            continue
-        if y[12] > y[11]:
-            continue
-        if y[3] + y[4] < 1:
-            continue
-        if y[13] < 1:
-            continue
-        if best is None or benefit > best[0]:
-            best = (benefit, cost, cost12, y)
-    return best
+
+        objective = float(
+            np.dot(selection, objective_values)
+        )
+
+        if objective > best_objective + 1e-9:
+            best_objective = objective
+            best_selection = selection.copy()
+
+    if best_selection is None:
+        return {
+            "success": False,
+            "status": "Infeasible",
+            "solver": "Enumeration",
+            "selection": None,
+            "objective": np.nan,
+        }
+
+    return {
+        "success": True,
+        "status": "Optimal",
+        "solver": "Enumeration fallback",
+        "selection": best_selection,
+        "objective": float(best_objective),
+    }
+
+
+def _b5_solve_mip(
+    budget=80000.0,
+    risk_adjusted=False,
+    max_projects=10,
+):
+    """Giải MIP bằng PuLP/CBC; tự dùng fallback nếu CBC không chạy."""
+    df = _b5_project_table()
+
+    try:
+        import pulp
+    except ModuleNotFoundError:
+        return _b5_solve_enumeration(
+            budget=budget,
+            risk_adjusted=risk_adjusted,
+            max_projects=max_projects,
+        )
+
+    objective_column = (
+        "Lợi ích kỳ vọng"
+        if risk_adjusted
+        else "Lợi ích"
+    )
+
+    model = pulp.LpProblem(
+        "Vietnam_National_Digital_Projects",
+        pulp.LpMaximize,
+    )
+
+    codes = df["Mã"].tolist()
+    y = {
+        code: pulp.LpVariable(
+            f"select_{code}",
+            cat="Binary",
+        )
+        for code in codes
+    }
+
+    model += pulp.lpSum(
+        float(df.loc[i, objective_column]) * y[codes[i]]
+        for i in range(len(df))
+    ), "Total_Benefit"
+
+    model += pulp.lpSum(
+        float(df.loc[i, "Chi phí"]) * y[codes[i]]
+        for i in range(len(df))
+    ) <= float(budget), "Budget"
+
+    model += pulp.lpSum(
+        y[code] for code in codes
+    ) <= int(max_projects), "Implementation_Capacity"
+
+    # An toàn số bắt buộc.
+    model += y["P07"] == 1, "Mandatory_Cybersecurity"
+
+    # Ít nhất một dự án nhân lực.
+    human_codes = df.loc[
+        df["Trụ cột"] == "Nhân lực",
+        "Mã",
+    ].tolist()
+    model += pulp.lpSum(
+        y[code] for code in human_codes
+    ) >= 1, "Human_Capital_Minimum"
+
+    # Ít nhất hai dự án bao trùm.
+    inclusive_codes = df.loc[
+        df["Bao trùm"] == 1,
+        "Mã",
+    ].tolist()
+    model += pulp.lpSum(
+        y[code] for code in inclusive_codes
+    ) >= 2, "Inclusion_Minimum"
+
+    # Không quá bốn dự án hạ tầng.
+    infrastructure_codes = df.loc[
+        df["Trụ cột"] == "Hạ tầng",
+        "Mã",
+    ].tolist()
+    model += pulp.lpSum(
+        y[code] for code in infrastructure_codes
+    ) <= 4, "Infrastructure_Cap"
+
+    # Quan hệ tiên quyết.
+    for _, row in df.iterrows():
+        if row["Tiên quyết"]:
+            model += (
+                y[row["Mã"]]
+                <= y[row["Tiên quyết"]]
+            ), f"Prerequisite_{row['Mã']}"
+
+    # Nếu P05 được chọn thì phải có ít nhất một dự án nhân lực.
+    model += (
+        y["P05"]
+        <= pulp.lpSum(y[code] for code in human_codes)
+    ), "AI_Requires_Human_Capital"
+
+    try:
+        model.solve(
+            pulp.PULP_CBC_CMD(
+                msg=False,
+                timeLimit=30,
+            )
+        )
+    except Exception:
+        return _b5_solve_enumeration(
+            budget=budget,
+            risk_adjusted=risk_adjusted,
+            max_projects=max_projects,
+        )
+
+    status = pulp.LpStatus[model.status]
+
+    if status != "Optimal":
+        return {
+            "success": False,
+            "status": status,
+            "solver": "PuLP/CBC",
+            "selection": None,
+            "objective": np.nan,
+        }
+
+    selection = np.array(
+        [
+            int(round(y[code].value() or 0))
+            for code in codes
+        ],
+        dtype=int,
+    )
+
+    return {
+        "success": True,
+        "status": status,
+        "solver": "PuLP/CBC",
+        "selection": selection,
+        "objective": float(
+            pulp.value(model.objective)
+        ),
+    }
+
+
+def _b5_result_table(result, budget):
+    """Tạo bảng đầu ra và KPI của một nghiệm."""
+    df = _b5_project_table().copy()
+
+    if not result["success"]:
+        return df.iloc[0:0].copy(), {}
+
+    df["Chọn"] = result["selection"]
+    selected = df[df["Chọn"] == 1].copy()
+
+    total_cost = float(selected["Chi phí"].sum())
+    gross_benefit = float(selected["Lợi ích"].sum())
+    expected_benefit = float(selected["Lợi ích kỳ vọng"].sum())
+
+    metrics = {
+        "solver": result["solver"],
+        "status": result["status"],
+        "n_projects": int(len(selected)),
+        "total_cost": total_cost,
+        "unused_budget": float(budget - total_cost),
+        "gross_benefit": gross_benefit,
+        "expected_benefit": expected_benefit,
+        "portfolio_risk": (
+            float(
+                np.average(
+                    selected["Rủi ro"],
+                    weights=selected["Chi phí"],
+                )
+            )
+            if total_cost > 0
+            else 0.0
+        ),
+    }
+
+    return selected, metrics
+
+
+def _b5_validation_table(result, budget, max_projects=10):
+    """Lập bảng xác nhận các ràng buộc chính."""
+    df = _b5_project_table()
+    selection = result["selection"]
+
+    if selection is None:
+        return pd.DataFrame(
+            {
+                "Ràng buộc": ["Mô hình khả thi"],
+                "Giá trị": [result["status"]],
+                "Đạt": [False],
+            }
+        )
+
+    selected_df = df[selection == 1]
+    selected_codes = set(selected_df["Mã"].tolist())
+
+    prerequisite_ok = True
+    for _, row in selected_df.iterrows():
+        if row["Tiên quyết"] and row["Tiên quyết"] not in selected_codes:
+            prerequisite_ok = False
+
+    checks = [
+        {
+            "Ràng buộc": "Tổng chi phí ≤ ngân sách",
+            "Giá trị": f"{selected_df['Chi phí'].sum():,.0f} / {budget:,.0f}",
+            "Đạt": selected_df["Chi phí"].sum() <= budget + 1e-7,
+        },
+        {
+            "Ràng buộc": "Số dự án ≤ năng lực triển khai",
+            "Giá trị": f"{len(selected_df)} / {max_projects}",
+            "Đạt": len(selected_df) <= max_projects,
+        },
+        {
+            "Ràng buộc": "P07 an toàn số bắt buộc",
+            "Giá trị": "P07" in selected_codes,
+            "Đạt": "P07" in selected_codes,
+        },
+        {
+            "Ràng buộc": "Có ít nhất một dự án nhân lực",
+            "Giá trị": int(
+                (selected_df["Trụ cột"] == "Nhân lực").sum()
+            ),
+            "Đạt": (
+                selected_df["Trụ cột"] == "Nhân lực"
+            ).sum() >= 1,
+        },
+        {
+            "Ràng buộc": "Có ít nhất hai dự án bao trùm",
+            "Giá trị": int(selected_df["Bao trùm"].sum()),
+            "Đạt": selected_df["Bao trùm"].sum() >= 2,
+        },
+        {
+            "Ràng buộc": "Tất cả quan hệ tiên quyết được thỏa",
+            "Giá trị": prerequisite_ok,
+            "Đạt": prerequisite_ok,
+        },
+    ]
+
+    return pd.DataFrame(checks)
 
 
 def page_5():
     hero(
-        "Bài 5 — MIP lựa chọn 15 dự án chuyển đổi số",
-        "Bài toán knapsack tổng quát hóa với biến nhị phân, ràng buộc loại trừ, tiên quyết, ngân sách đa năm và số lượng dự án.",
-        ["MIP", "Binary selection", "Knapsack"],
+        "Bài 5 — MIP lựa chọn 15 dự án chuyển đổi số quốc gia",
+        "Giải mô hình nhị phân bằng PuLP/CBC, kiểm tra quan hệ tiên quyết, so sánh ngân sách 80.000–100.000 tỷ VND và tối ưu lợi ích kỳ vọng có rủi ro.",
+        ["5.1-5.5", "MIP", "PuLP/CBC", "Knapsack", "Risk-adjusted"],
     )
-    budget = st.slider("Ngân sách tổng 5 năm", 70000, 105000, 80000, 5000)
-    require_p1p2 = st.checkbox("Thử kịch bản bắt buộc cả P1 và P2 nhưng vẫn giữ ràng buộc loại trừ")
-    best = solve_mip_bruteforce(budget, require_p1p2=require_p1p2)
-    df = project_table()
 
-    if best is None:
-        st.error("Không khả thi: yêu cầu chọn cả P1 và P2 xung đột trực tiếp với ràng buộc y₁ + y₂ ≤ 1.")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        return
+    df = _b5_project_table()
 
-    benefit, cost, cost12, y = best
-    selected = df[y == 1].copy()
-    selected["NPV/Chi phí"] = selected["NPV"] / selected["Chi phí"]
+    # =====================================================
+    # 5.1. Bối cảnh
+    # =====================================================
+    st.markdown("## 5.1. Bối cảnh Việt Nam")
 
-    kpi_cards(
+    st.markdown(
+        """
+        Chính phủ phải lựa chọn một danh mục từ **15 dự án chuyển đổi số** trong điều kiện
+        ngân sách và năng lực triển khai có hạn. Các dự án không độc lập hoàn toàn:
+        một số dự án AI, dữ liệu và ứng dụng chỉ có thể triển khai sau khi hạ tầng nền tảng
+        tương ứng đã được lựa chọn.
+
+        Mô hình cần đồng thời bảo đảm an toàn số, nhân lực và tính bao trùm, thay vì chỉ chọn
+        các dự án có lợi ích gộp cao nhất.
+        """
+    )
+
+    # =====================================================
+    # 5.2. Mô hình toán học
+    # =====================================================
+    st.markdown("## 5.2. Mô hình toán học")
+
+    st.latex(
+        r"y_i="
+        r"\begin{cases}"
+        r"1,&\text{nếu chọn dự án }i\\"
+        r"0,&\text{ngược lại}"
+        r"\end{cases}"
+    )
+
+    st.latex(
+        r"\max Z=\sum_{i=1}^{15}B_i y_i"
+    )
+
+    st.latex(
+        r"\sum_{i=1}^{15}C_i y_i\leq Budget"
+    )
+
+    st.latex(
+        r"y_i\leq y_j"
+        r"\quad\text{khi dự án }i\text{ cần dự án }j"
+    )
+
+    st.latex(
+        r"\sum_i y_i\leq10,\quad y_i\in\{0,1\}"
+    )
+
+    st.markdown(
+        "Trong mô hình rủi ro, lợi ích được thay bằng "
+        r"$E(B_i)=B_i(1-p_i)$."
+    )
+
+    # =====================================================
+    # 5.3. Dữ liệu
+    # =====================================================
+    st.markdown("## 5.3. Dữ liệu 15 dự án")
+
+    display_df = df.copy()
+    display_df["Rủi ro (%)"] = 100 * display_df["Rủi ro"]
+
+    st.dataframe(
+        display_df[
+            [
+                "Mã",
+                "Dự án",
+                "Trụ cột",
+                "Chi phí",
+                "Lợi ích",
+                "Lợi ích kỳ vọng",
+                "Rủi ro (%)",
+                "Tiên quyết",
+                "Bao trùm",
+            ]
+        ],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.caption(
+        "Đơn vị chi phí và lợi ích: tỷ VND. Bộ số liệu dùng cho mô phỏng bài tập; "
+        "cần phân biệt với số liệu dự toán chính thức."
+    )
+
+    # =====================================================
+    # 5.4. Yêu cầu lập trình
+    # =====================================================
+    st.markdown("## 5.4. Yêu cầu lập trình")
+
+    tab541, tab542, tab543, tab544 = st.tabs(
         [
-            ("Tổng NPV", f"{benefit:,.0f}", "tỷ VND"),
-            ("Tổng chi phí", f"{cost:,.0f}", f"ngân sách {budget:,.0f}"),
-            ("Số dự án", f"{int(y.sum())}", "ràng buộc 7-11"),
-            ("NPV/Chi phí", f"{benefit / cost:.2f}", "hiệu quả danh mục"),
+            "5.4.1 - MIP cơ sở",
+            "5.4.2 - Ngân sách 100.000",
+            "5.4.3 - Lợi ích có rủi ro",
+            "5.4.4 - Độ nhạy & kiểm định",
         ]
     )
-    c1, c2 = st.columns([1.25, 1])
-    with c1:
-        st.dataframe(selected, use_container_width=True, hide_index=True)
-    with c2:
-        fig = px.bar(selected, x="Mã", y="NPV", color="Lĩnh vực", template=PLOT_TEMPLATE, title="Lợi ích NPV của dự án được chọn", hover_name="Tên dự án")
-        fig.update_layout(height=430, margin=dict(l=10, r=10, t=54, b=10))
-        st.plotly_chart(fig, use_container_width=True)
+
+    # -----------------------------------------------------
+    # 5.4.1
+    # -----------------------------------------------------
+    with tab541:
+        st.markdown(
+            "### Câu 5.4.1. Giải MIP với ngân sách 80.000 tỷ VND"
+        )
+
+        base_budget = 80000.0
+        base_result = _b5_solve_mip(
+            budget=base_budget,
+            risk_adjusted=False,
+            max_projects=10,
+        )
+
+        if not base_result["success"]:
+            st.error(
+                f"Mô hình không có nghiệm tối ưu. Status: {base_result['status']}"
+            )
+        else:
+            selected, metrics = _b5_result_table(
+                base_result,
+                base_budget,
+            )
+
+            kpi_cards(
+                [
+                    (
+                        "Solver",
+                        metrics["solver"],
+                        metrics["status"],
+                    ),
+                    (
+                        "Số dự án",
+                        str(metrics["n_projects"]),
+                        "tối đa 10",
+                    ),
+                    (
+                        "Tổng chi phí",
+                        f"{metrics['total_cost']:,.0f}",
+                        "tỷ VND",
+                    ),
+                    (
+                        "Tổng lợi ích",
+                        f"{metrics['gross_benefit']:,.0f}",
+                        f"còn {metrics['unused_budget']:,.0f} ngân sách",
+                    ),
+                ]
+            )
+
+            st.dataframe(
+                selected[
+                    [
+                        "Mã",
+                        "Dự án",
+                        "Trụ cột",
+                        "Chi phí",
+                        "Lợi ích",
+                        "Tiên quyết",
+                    ]
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            selected_plot = selected.sort_values(
+                "Lợi ích",
+                ascending=True,
+            )
+
+            fig = px.bar(
+                selected_plot,
+                x="Lợi ích",
+                y="Dự án",
+                orientation="h",
+                color="Trụ cột",
+                text="Lợi ích",
+                template=PLOT_TEMPLATE,
+                title="Lợi ích của danh mục dự án được chọn",
+            )
+            fig.update_layout(
+                height=520,
+                margin=dict(l=10, r=10, t=54, b=10),
+            )
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+            )
+
+            st.markdown("#### Kiểm tra ràng buộc")
+            st.dataframe(
+                _b5_validation_table(
+                    base_result,
+                    base_budget,
+                    max_projects=10,
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            with st.expander("Xem mã PuLP/CBC rút gọn"):
+                st.code(
+                    """model = pulp.LpProblem(
+    "Digital_Project_Selection",
+    pulp.LpMaximize
+)
+
+y = {
+    code: pulp.LpVariable(
+        f"select_{code}",
+        cat="Binary"
+    )
+    for code in codes
+}
+
+model += pulp.lpSum(
+    benefit[i] * y[codes[i]]
+    for i in range(15)
+)
+
+model += pulp.lpSum(
+    cost[i] * y[codes[i]]
+    for i in range(15)
+) <= 80000
+
+# Ví dụ quan hệ tiên quyết
+model += y["P05"] <= y["P01"]
+model += y["P06"] <= y["P05"]
+
+model.solve(
+    pulp.PULP_CBC_CMD(msg=False)
+)""",
+                    language="python",
+                )
+
+    # -----------------------------------------------------
+    # 5.4.2
+    # -----------------------------------------------------
+    with tab542:
+        st.markdown(
+            "### Câu 5.4.2. Tăng ngân sách lên 100.000 tỷ VND"
+        )
+
+        result_80 = _b5_solve_mip(
+            budget=80000.0,
+            risk_adjusted=False,
+            max_projects=10,
+        )
+        result_100 = _b5_solve_mip(
+            budget=100000.0,
+            risk_adjusted=False,
+            max_projects=10,
+        )
+
+        selected_80, metrics_80 = _b5_result_table(
+            result_80,
+            80000.0,
+        )
+        selected_100, metrics_100 = _b5_result_table(
+            result_100,
+            100000.0,
+        )
+
+        comparison = pd.DataFrame(
+            {
+                "Chỉ tiêu": [
+                    "Số dự án",
+                    "Tổng chi phí",
+                    "Tổng lợi ích",
+                    "Lợi ích kỳ vọng",
+                ],
+                "Ngân sách 80.000": [
+                    metrics_80["n_projects"],
+                    metrics_80["total_cost"],
+                    metrics_80["gross_benefit"],
+                    metrics_80["expected_benefit"],
+                ],
+                "Ngân sách 100.000": [
+                    metrics_100["n_projects"],
+                    metrics_100["total_cost"],
+                    metrics_100["gross_benefit"],
+                    metrics_100["expected_benefit"],
+                ],
+            }
+        )
+
+        kpi_cards(
+            [
+                (
+                    "Lợi ích tăng thêm",
+                    f"{metrics_100['gross_benefit']-metrics_80['gross_benefit']:,.0f}",
+                    "khi tăng ngân sách 20.000",
+                ),
+                (
+                    "Chi phí tăng thêm",
+                    f"{metrics_100['total_cost']-metrics_80['total_cost']:,.0f}",
+                    "tỷ VND",
+                ),
+                (
+                    "Dự án tăng thêm",
+                    str(
+                        metrics_100["n_projects"]
+                        - metrics_80["n_projects"]
+                    ),
+                    "số lượng",
+                ),
+                (
+                    "Lợi ích biên/chi phí",
+                    f"{(metrics_100['gross_benefit']-metrics_80['gross_benefit'])/20000:.3f}",
+                    "trên 1 đồng ngân sách bổ sung",
+                ),
+            ]
+        )
+
+        st.dataframe(
+            comparison,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        codes_80 = set(selected_80["Mã"].tolist())
+        codes_100 = set(selected_100["Mã"].tolist())
+
+        portfolio_change = pd.DataFrame(
+            {
+                "Nhóm": [
+                    "Giữ lại",
+                    "Bổ sung ở 100.000",
+                    "Bị thay thế",
+                ],
+                "Mã dự án": [
+                    ", ".join(sorted(codes_80 & codes_100)),
+                    ", ".join(sorted(codes_100 - codes_80)) or "Không có",
+                    ", ".join(sorted(codes_80 - codes_100)) or "Không có",
+                ],
+            }
+        )
+
+        st.dataframe(
+            portfolio_change,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    # -----------------------------------------------------
+    # 5.4.3
+    # -----------------------------------------------------
+    with tab543:
+        st.markdown(
+            "### Câu 5.4.3. Tối ưu lợi ích kỳ vọng có rủi ro"
+        )
+
+        deterministic_result = _b5_solve_mip(
+            budget=80000.0,
+            risk_adjusted=False,
+            max_projects=10,
+        )
+        risk_result = _b5_solve_mip(
+            budget=80000.0,
+            risk_adjusted=True,
+            max_projects=10,
+        )
+
+        deterministic_selected, deterministic_metrics = _b5_result_table(
+            deterministic_result,
+            80000.0,
+        )
+        risk_selected, risk_metrics = _b5_result_table(
+            risk_result,
+            80000.0,
+        )
+
+        risk_compare = pd.DataFrame(
+            {
+                "Chỉ tiêu": [
+                    "Tổng chi phí",
+                    "Lợi ích gộp",
+                    "Lợi ích kỳ vọng",
+                    "Rủi ro danh mục",
+                    "Số dự án",
+                ],
+                "Tối ưu lợi ích gộp": [
+                    deterministic_metrics["total_cost"],
+                    deterministic_metrics["gross_benefit"],
+                    deterministic_metrics["expected_benefit"],
+                    deterministic_metrics["portfolio_risk"],
+                    deterministic_metrics["n_projects"],
+                ],
+                "Tối ưu lợi ích kỳ vọng": [
+                    risk_metrics["total_cost"],
+                    risk_metrics["gross_benefit"],
+                    risk_metrics["expected_benefit"],
+                    risk_metrics["portfolio_risk"],
+                    risk_metrics["n_projects"],
+                ],
+            }
+        )
+
+        kpi_cards(
+            [
+                (
+                    "Expected benefit mới",
+                    f"{risk_metrics['expected_benefit']:,.0f}",
+                    "tỷ VND",
+                ),
+                (
+                    "Rủi ro danh mục",
+                    f"{100*risk_metrics['portfolio_risk']:.2f}%",
+                    "gia quyền theo chi phí",
+                ),
+                (
+                    "Thay đổi expected benefit",
+                    f"{risk_metrics['expected_benefit']-deterministic_metrics['expected_benefit']:+,.0f}",
+                    "so với tối ưu lợi ích gộp",
+                ),
+                (
+                    "Thay đổi rủi ro",
+                    f"{100*(risk_metrics['portfolio_risk']-deterministic_metrics['portfolio_risk']):+.2f} điểm %",
+                    "risk-adjusted trừ deterministic",
+                ),
+            ]
+        )
+
+        st.dataframe(
+            risk_compare,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        deterministic_codes = set(
+            deterministic_selected["Mã"].tolist()
+        )
+        risk_codes = set(
+            risk_selected["Mã"].tolist()
+        )
+
+        st.markdown("#### Thay đổi danh mục do điều chỉnh rủi ro")
+
+        st.dataframe(
+            pd.DataFrame(
+                {
+                    "Nhóm": [
+                        "Cùng được chọn",
+                        "Chỉ mô hình gộp chọn",
+                        "Chỉ mô hình rủi ro chọn",
+                    ],
+                    "Dự án": [
+                        ", ".join(
+                            sorted(
+                                deterministic_codes & risk_codes
+                            )
+                        ),
+                        ", ".join(
+                            sorted(
+                                deterministic_codes - risk_codes
+                            )
+                        ) or "Không có",
+                        ", ".join(
+                            sorted(
+                                risk_codes - deterministic_codes
+                            )
+                        ) or "Không có",
+                    ],
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    # -----------------------------------------------------
+    # 5.4.4
+    # -----------------------------------------------------
+    with tab544:
+        st.markdown(
+            "### Câu 5.4.4. Phân tích độ nhạy ngân sách và tính ổn định danh mục"
+        )
+
+        budgets = np.arange(
+            60000.0,
+            100001.0,
+            5000.0,
+        )
+
+        rows = []
+        selection_frequency = {
+            code: 0
+            for code in df["Mã"].tolist()
+        }
+
+        for budget in budgets:
+            result = _b5_solve_mip(
+                budget=float(budget),
+                risk_adjusted=True,
+                max_projects=10,
+            )
+
+            selected, metrics = _b5_result_table(
+                result,
+                float(budget),
+            )
+
+            selected_codes = set(
+                selected["Mã"].tolist()
+            )
+
+            for code in selected_codes:
+                selection_frequency[code] += 1
+
+            rows.append(
+                [
+                    budget,
+                    metrics["n_projects"],
+                    metrics["total_cost"],
+                    metrics["gross_benefit"],
+                    metrics["expected_benefit"],
+                    metrics["portfolio_risk"],
+                    ", ".join(sorted(selected_codes)),
+                ]
+            )
+
+        sensitivity = pd.DataFrame(
+            rows,
+            columns=[
+                "Ngân sách",
+                "Số dự án",
+                "Tổng chi phí",
+                "Lợi ích gộp",
+                "Lợi ích kỳ vọng",
+                "Rủi ro danh mục",
+                "Danh mục",
+            ],
+        )
+
+        fig_sensitivity = px.line(
+            sensitivity,
+            x="Ngân sách",
+            y=[
+                "Lợi ích gộp",
+                "Lợi ích kỳ vọng",
+            ],
+            markers=True,
+            template=PLOT_TEMPLATE,
+            title="Độ nhạy lợi ích theo ngân sách",
+        )
+        fig_sensitivity.update_layout(
+            height=470,
+            margin=dict(l=10, r=10, t=54, b=10),
+        )
+        st.plotly_chart(
+            fig_sensitivity,
+            use_container_width=True,
+        )
+
+        frequency_df = pd.DataFrame(
+            {
+                "Mã": list(selection_frequency.keys()),
+                "Số lần được chọn": list(
+                    selection_frequency.values()
+                ),
+            }
+        ).merge(
+            df[["Mã", "Dự án"]],
+            on="Mã",
+            how="left",
+        )
+
+        frequency_df["Tần suất (%)"] = (
+            100
+            * frequency_df["Số lần được chọn"]
+            / len(budgets)
+        )
+
+        frequency_df = frequency_df.sort_values(
+            ["Số lần được chọn", "Mã"],
+            ascending=[False, True],
+        )
+
+        st.markdown("#### Tần suất dự án xuất hiện trong nghiệm tối ưu")
+        st.dataframe(
+            frequency_df,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        stable_projects = frequency_df.loc[
+            frequency_df["Số lần được chọn"] == len(budgets),
+            "Mã",
+        ].tolist()
+
+        st.success(
+            "Các dự án xuất hiện ở mọi mức ngân sách: "
+            + (
+                ", ".join(stable_projects)
+                if stable_projects
+                else "Không có"
+            )
+        )
+
+    # =====================================================
+    # Tải kết quả
+    # =====================================================
+    export_result = _b5_solve_mip(
+        budget=80000.0,
+        risk_adjusted=True,
+        max_projects=10,
+    )
+    export_selected, _ = _b5_result_table(
+        export_result,
+        80000.0,
+    )
+
+    st.download_button(
+        "Tải danh mục tối ưu Bài 5",
+        data=export_selected.to_csv(
+            index=False
+        ).encode("utf-8-sig"),
+        file_name="bai5_danh_muc_du_an_toi_uu.csv",
+        mime="text/csv",
+        key="download_bai5_fixed",
+    )
+
+    # =====================================================
+    # 5.5. Thảo luận chính sách
+    # =====================================================
+    st.markdown("## 5.5. Câu hỏi thảo luận chính sách")
+
+    policy_result = _b5_solve_mip(
+        budget=80000.0,
+        risk_adjusted=True,
+        max_projects=10,
+    )
+    policy_selected, policy_metrics = _b5_result_table(
+        policy_result,
+        80000.0,
+    )
+
+    with st.expander(
+        "a) Vì sao không nên chỉ xếp hạng dự án theo B/C rồi chọn lần lượt?",
+        expanded=True,
+    ):
+        st.markdown(
+            "Cách chọn tuần tự theo B/C có thể vi phạm quan hệ tiên quyết, bỏ qua yêu cầu "
+            "an toàn số, nhân lực và tính bao trùm. MIP đánh giá đồng thời toàn bộ tổ hợp, "
+            "nên phù hợp hơn khi các dự án có quan hệ bổ trợ hoặc phụ thuộc."
+        )
+
+    with st.expander(
+        "b) Ngân sách tăng lên 100.000 tỷ có luôn làm danh mục tốt hơn tương ứng không?",
+        expanded=True,
+    ):
+        st.markdown(
+            "Lợi ích không nhất thiết tăng tỷ lệ thuận với ngân sách. Sau khi các dự án "
+            "có hiệu quả cao đã được chọn, ngân sách bổ sung có thể chỉ tài trợ các dự án "
+            "có lợi ích biên thấp hơn hoặc bị giới hạn bởi năng lực triển khai tối đa 10 dự án."
+        )
+
+    with st.expander(
+        "c) Tại sao mô hình có rủi ro có thể loại một dự án lợi ích gộp cao?",
+        expanded=True,
+    ):
+        st.markdown(
+            "Dự án có lợi ích danh nghĩa cao nhưng xác suất thất bại lớn có thể có lợi ích "
+            "kỳ vọng thấp hơn một dự án quy mô nhỏ nhưng ổn định. Điều chỉnh rủi ro giúp "
+            "danh mục tránh phụ thuộc quá lớn vào một số dự án công nghệ có độ bất định cao."
+        )
+
+    with st.expander(
+        "d) Danh mục khuyến nghị hiện tại là gì?",
+        expanded=True,
+    ):
+        selected_codes = ", ".join(
+            policy_selected["Mã"].tolist()
+        )
+
+        st.markdown(
+            f"Với ngân sách 80.000 tỷ VND và mục tiêu lợi ích kỳ vọng, danh mục mô phỏng "
+            f"chọn **{policy_metrics['n_projects']} dự án**: **{selected_codes}**. "
+            f"Tổng chi phí khoảng **{policy_metrics['total_cost']:,.0f} tỷ VND**, "
+            f"lợi ích kỳ vọng khoảng **{policy_metrics['expected_benefit']:,.0f} tỷ VND**. "
+            "Kết quả là đầu vào hỗ trợ quyết định, không thay thế thẩm định kỹ thuật, pháp lý "
+            "và đánh giá tác động xã hội của từng dự án."
+        )
 
 
 def _b6_prepare_data():
