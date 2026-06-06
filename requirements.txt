@@ -6,3 +6,5 @@ plotly>=5.17
 pulp>=2.7
 cvxpy>=1.4
 pymoo>=0.6.1
+gymnasium==1.2.3
+stable-baselines3==2.8.0
