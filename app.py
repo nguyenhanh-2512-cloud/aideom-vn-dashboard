@@ -12320,13 +12320,7 @@ def page_11():
         )
 
 
-def _b12_scenario_shares():
-    """
-    Năm kịch bản chính sách tích hợp.
-
-    Thứ tự tỷ trọng:
-    [K - vốn vật chất, D - chuyển đổi số, AI, H - nhân lực số]
-    """
+def _b12_scenarios():
     return {
         "S1 - Truyền thống": np.array(
             [0.70, 0.10, 0.10, 0.10],
@@ -12351,368 +12345,643 @@ def _b12_scenario_shares():
     }
 
 
-def _b12_initial_state():
-    """
-    Lấy trạng thái cuối năm 2025 từ compute_tfp() đã có trong app.py.
-    """
-    (
-        years,
-        Y,
-        K,
-        L,
-        D,
-        AI,
-        H,
-        A,
-    ) = compute_tfp()
+def _b12_module_1_forecast(
+    shares,
+):
+    simulation = simulate_dynamic(
+        shares=shares,
+        start=2026,
+        end=2030,
+        invest_rate=0.22,
+        shock_2028=0.03,
+    )
+
+    first = simulation.iloc[0]
+    last = simulation.iloc[-1]
 
     return {
-        "year": int(years[-1]),
-        "Y": float(Y[-1]),
-        "K": float(K[-1]),
-        "L": float(L[-1]),
-        "D": float(D[-1]),
-        "AI": float(AI[-1]),
-        "H": float(H[-1]),
-        "A": float(A[-1]),
+        "GDP_2030": float(
+            last["Y_GDP"]
+        ),
+        "Consumption_2030": float(
+            last["C_tiêu_dùng"]
+        ),
+        "GDP_Growth_2026_2030": float(
+            100
+            * (
+                last["Y_GDP"]
+                / first["Y_GDP"]
+                - 1
+            )
+        ),
+        "Digital_2030": float(
+            last["D"]
+        ),
+        "AI_2030": float(
+            last["AI"]
+        ),
+        "Human_2030": float(
+            last["H"]
+        ),
+        "trajectory": simulation,
     }
 
 
-def _b12_simulate_scenario(
-    shares,
-    start_year=2026,
-    end_year=2030,
-    investment_rate=0.22,
-):
-    """
-    Mô phỏng một kịch bản tích hợp từ 2026 đến 2030.
-    """
-    state = _b12_initial_state()
+def _b12_module_2_region_readiness():
+    df = load_regions().copy()
 
-    shares = np.asarray(
-        shares,
+    criteria = [
+        "grdp_per_capita_million_VND",
+        "fdi_registered_billion_USD",
+        "digital_index_0_100",
+        "ai_readiness_0_100",
+        "trained_labor_pct",
+        "rd_intensity_pct",
+        "internet_penetration_pct",
+        "gini_coef",
+    ]
+
+    weights = np.array(
+        [
+            0.10,
+            0.10,
+            0.15,
+            0.20,
+            0.15,
+            0.15,
+            0.05,
+            0.10,
+        ],
         dtype=float,
     )
 
-    shares = (
-        shares
-        / max(
-            shares.sum(),
-            1e-12,
+    benefit_flags = [
+        True,
+        True,
+        True,
+        True,
+        True,
+        True,
+        True,
+        False,
+    ]
+
+    score = topsis_score(
+        df,
+        criteria,
+        weights,
+        benefit_flags,
+    )
+
+    result = pd.DataFrame(
+        {
+            "Vùng": df["region_name_vi"],
+            "ReadinessScore": score,
+        }
+    )
+
+    result["ReadinessRank"] = (
+        result["ReadinessScore"]
+        .rank(
+            ascending=False,
+            method="min",
+        )
+        .astype(int)
+    )
+
+    return result.sort_values(
+        "ReadinessRank"
+    ).reset_index(drop=True)
+
+
+def _b12_module_3_allocation():
+    """
+    Ưu tiên dùng solver Bài 4. Nếu Bài 4 chưa được thay,
+    dùng một LP tích hợp tối giản để dashboard vẫn chạy.
+    """
+    regions, items, beta, d0 = region_beta_matrix()
+
+    solver_function = globals().get(
+        "_b4_solve_scipy"
+    )
+
+    if callable(
+        solver_function
+    ):
+        result = solver_function(
+            fairness=True,
+            total_budget=50000.0,
+            region_floor=5000.0,
+            region_cap=12000.0,
+            human_floor=12000.0,
+            gamma=0.002,
+            lam=0.68,
+        )
+
+        if result.success:
+            x = np.asarray(
+                result.x[:24],
+                dtype=float,
+            ).reshape(6, 4)
+
+            objective = float(
+                -result.fun
+            )
+
+            source = "Bài 4 - SciPy LP"
+        else:
+            x = None
+    else:
+        x = None
+
+    if x is None:
+        n = 24
+        c = -beta.reshape(-1)
+
+        a_ub = []
+        b_ub = []
+
+        row = np.ones(
+            n,
+            dtype=float,
+        )
+        a_ub.append(
+            row
+        )
+        b_ub.append(
+            50000.0
+        )
+
+        for region_index in range(6):
+            row = np.zeros(
+                n,
+                dtype=float,
+            )
+            row[
+                region_index * 4:
+                region_index * 4 + 4
+            ] = -1.0
+            a_ub.append(
+                row
+            )
+            b_ub.append(
+                -5000.0
+            )
+
+            row = np.zeros(
+                n,
+                dtype=float,
+            )
+            row[
+                region_index * 4:
+                region_index * 4 + 4
+            ] = 1.0
+            a_ub.append(
+                row
+            )
+            b_ub.append(
+                12000.0
+            )
+
+        row = np.zeros(
+            n,
+            dtype=float,
+        )
+        for region_index in range(6):
+            row[
+                region_index * 4 + 3
+            ] = -1.0
+
+        a_ub.append(
+            row
+        )
+        b_ub.append(
+            -12000.0
+        )
+
+        result = linprog(
+            c,
+            A_ub=np.asarray(
+                a_ub,
+                dtype=float,
+            ),
+            b_ub=np.asarray(
+                b_ub,
+                dtype=float,
+            ),
+            bounds=[
+                (0.0, None)
+            ]
+            * n,
+            method="highs",
+        )
+
+        if not result.success:
+            raise RuntimeError(
+                "M3 không giải được LP."
+            )
+
+        x = np.asarray(
+            result.x,
+            dtype=float,
+        ).reshape(6, 4)
+
+        objective = float(
+            -result.fun
+        )
+
+        source = "LP tích hợp dự phòng"
+
+    allocation = pd.DataFrame(
+        x,
+        columns=items,
+    )
+
+    allocation.insert(
+        0,
+        "Vùng",
+        regions,
+    )
+
+    allocation["Tổng vùng"] = (
+        x.sum(axis=1)
+    )
+
+    allocation[
+        "Digital sau đầu tư"
+    ] = (
+        d0
+        + 0.002
+        * x[:, 1]
+    )
+
+    return {
+        "table": allocation,
+        "objective": objective,
+        "source": source,
+        "total_budget": float(
+            x.sum()
+        ),
+        "human_budget": float(
+            x[:, 3].sum()
+        ),
+    }
+
+
+def _b12_module_4_labor(
+    shares,
+):
+    sectors = load_sectors().copy()
+
+    ai_share = float(
+        shares[2]
+    )
+    human_share = float(
+        shares[3]
+    )
+    digital_share = float(
+        shares[1]
+    )
+
+    readiness = (
+        sectors[
+            "ai_readiness_0_100"
+        ]
+        / 100.0
+    )
+
+    automation = (
+        sectors[
+            "automation_risk_pct"
+        ]
+        / 100.0
+    )
+
+    labor = sectors[
+        "labor_million"
+    ]
+
+    jobs_created = (
+        labor
+        * (
+            0.018
+            + 0.055
+            * digital_share
+            + 0.050
+            * ai_share
+            * readiness
+            + 0.048
+            * human_share
         )
     )
 
-    years = np.arange(
-        start_year,
-        end_year + 1,
+    jobs_displaced = (
+        labor
+        * automation
+        * (
+            0.018
+            + 0.065
+            * ai_share
+        )
     )
 
-    K = state["K"] * 1.06
-    L = state["L"] * 1.006
-    D = state["D"] + 0.80
-    AI = state["AI"] + 6.00
-    H = state["H"] + 0.80
-    A = state["A"] * 1.012
+    jobs_retrained = (
+        labor
+        * (
+            0.018
+            + 0.090
+            * human_share
+        )
+    )
 
-    delta_K = 0.05
-    delta_D = 0.12
-    delta_AI = 0.15
-    mu_H = 0.02
-    theta_H = 0.80
+    net_jobs = (
+        jobs_created
+        + 0.55
+        * jobs_retrained
+        - jobs_displaced
+    )
+
+    result = pd.DataFrame(
+        {
+            "Ngành": sectors[
+                "sector_name_vi"
+            ],
+            "JobsCreated_million": jobs_created,
+            "JobsDisplaced_million": jobs_displaced,
+            "JobsRetrained_million": jobs_retrained,
+            "NetJobs_million": net_jobs,
+        }
+    )
+
+    return {
+        "table": result.sort_values(
+            "NetJobs_million",
+            ascending=False,
+        ).reset_index(drop=True),
+        "net_jobs_total": float(
+            net_jobs.sum()
+        ),
+        "displaced_total": float(
+            jobs_displaced.sum()
+        ),
+        "retrained_total": float(
+            jobs_retrained.sum()
+        ),
+    }
+
+
+def _b12_module_5_risk(
+    shares,
+):
+    k_share = float(
+        shares[0]
+    )
+    d_share = float(
+        shares[1]
+    )
+    ai_share = float(
+        shares[2]
+    )
+    h_share = float(
+        shares[3]
+    )
+
+    cyber_risk = float(
+        np.clip(
+            100
+            * (
+                0.48
+                * ai_share
+                + 0.25
+                * d_share
+                - 0.20
+                * h_share
+            ),
+            0.0,
+            100.0,
+        )
+    )
+
+    emission_risk = float(
+        np.clip(
+            100
+            * (
+                0.34
+                * k_share
+                + 0.38
+                * ai_share
+                + 0.08
+                * d_share
+            ),
+            0.0,
+            100.0,
+        )
+    )
+
+    inclusion_score = float(
+        np.clip(
+            100
+            * (
+                0.58
+                * h_share
+                + 0.30
+                * d_share
+                + 0.12
+                * k_share
+            ),
+            0.0,
+            100.0,
+        )
+    )
+
+    concentration_risk = float(
+        100
+        * np.max(
+            shares
+        )
+    )
+
+    return {
+        "CyberRisk": cyber_risk,
+        "EmissionRisk": emission_risk,
+        "InclusionScore": inclusion_score,
+        "ConcentrationRisk": concentration_risk,
+    }
+
+
+@st.cache_data(show_spinner=False)
+def _b12_run_pipeline():
+    scenarios = _b12_scenarios()
+
+    readiness = (
+        _b12_module_2_region_readiness()
+    )
+
+    allocation = (
+        _b12_module_3_allocation()
+    )
 
     rows = []
-
-    for year in years:
-        GDP = (
-            A
-            * K**0.33
-            * L**0.42
-            * D**0.10
-            * AI**0.08
-            * H**0.07
-        )
-
-        total_investment = (
-            investment_rate
-            * GDP
-        )
-
-        consumption = (
-            GDP
-            - total_investment
-        )
-
-        I_K = (
-            shares[0]
-            * total_investment
-        )
-
-        I_D = (
-            shares[1]
-            * total_investment
-        )
-
-        I_AI = (
-            shares[2]
-            * total_investment
-        )
-
-        I_H = (
-            shares[3]
-            * total_investment
-        )
-
-        cyber_risk = max(
-            0.0,
-            100
-            * (
-                0.55 * shares[2]
-                + 0.20 * shares[1]
-                - 0.25 * shares[3]
-            ),
-        )
-
-        emission_risk = max(
-            0.0,
-            100
-            * (
-                0.36 * shares[0]
-                + 0.40 * shares[2]
-                + 0.12 * shares[3]
-            ),
-        )
-
-        inclusion_score = max(
-            0.0,
-            min(
-                100.0,
-                100
-                * (
-                    shares[3]
-                    + 0.50 * shares[1]
-                ),
-            ),
-        )
-
-        rows.append(
-            [
-                year,
-                GDP,
-                consumption,
-                total_investment,
-                K,
-                D,
-                AI,
-                H,
-                A,
-                I_K,
-                I_D,
-                I_AI,
-                I_H,
-                cyber_risk,
-                emission_risk,
-                inclusion_score,
-            ]
-        )
-
-        K = (
-            (1 - delta_K) * K
-            + I_K
-        )
-
-        D = max(
-            1e-6,
-            (1 - delta_D) * D
-            + I_D / 240.0,
-        )
-
-        AI = max(
-            1e-6,
-            (1 - delta_AI) * AI
-            + I_AI / 135.0,
-        )
-
-        H = max(
-            1e-6,
-            H
-            + theta_H * I_H / 520.0
-            - mu_H * H,
-        )
-
-        A = (
-            A
-            * (
-                1
-                + 0.00008 * D
-                + 0.00004 * AI
-                + 0.00006 * H
-            )
-        )
-
-        L *= 1.006
-
-    return pd.DataFrame(
-        rows,
-        columns=[
-            "Năm",
-            "GDP",
-            "Tiêu dùng",
-            "Tổng đầu tư",
-            "K",
-            "D",
-            "AI",
-            "H",
-            "A",
-            "I_K",
-            "I_D",
-            "I_AI",
-            "I_H",
-            "CyberRisk",
-            "EmissionRisk",
-            "InclusionScore",
-        ],
-    )
-
-
-@st.cache_data
-def _b12_build_results():
-    """
-    Chạy toàn bộ năm kịch bản và tạo bảng KPI năm 2030.
-    """
-    scenarios = _b12_scenario_shares()
-
-    result_rows = []
-    simulation_dict = {}
+    trajectories = {}
+    labor_results = {}
 
     for scenario_name, shares in scenarios.items():
-        simulation = _b12_simulate_scenario(
-            shares=shares,
-            start_year=2026,
-            end_year=2030,
-            investment_rate=0.22,
-        )
-
-        simulation_dict[
-            scenario_name
-        ] = simulation
-
-        last = simulation.iloc[-1]
-
-        growth_2026_2030 = (
-            100
-            * (
-                last["GDP"]
-                / simulation.iloc[0]["GDP"]
-                - 1
+        forecast = (
+            _b12_module_1_forecast(
+                shares
             )
         )
 
-        result_rows.append(
-            [
-                scenario_name,
-                float(last["GDP"]),
-                float(last["Tiêu dùng"]),
-                float(last["K"]),
-                float(last["D"]),
-                float(last["AI"]),
-                float(last["H"]),
-                float(last["CyberRisk"]),
-                float(last["EmissionRisk"]),
-                float(last["InclusionScore"]),
-                float(growth_2026_2030),
-                float(shares[0]),
-                float(shares[1]),
-                float(shares[2]),
-                float(shares[3]),
-            ]
+        labor = (
+            _b12_module_4_labor(
+                shares
+            )
         )
 
-    result_df = pd.DataFrame(
-        result_rows,
-        columns=[
-            "Kịch bản",
-            "GDP_2030",
-            "Tiêu dùng_2030",
-            "K_2030",
-            "D_2030",
-            "AI_2030",
-            "H_2030",
-            "CyberRisk",
-            "EmissionRisk",
-            "InclusionScore",
-            "Tăng trưởng 2026-2030 (%)",
-            "Share_K",
-            "Share_D",
-            "Share_AI",
-            "Share_H",
-        ],
+        risk = (
+            _b12_module_5_risk(
+                shares
+            )
+        )
+
+        trajectories[
+            scenario_name
+        ] = forecast[
+            "trajectory"
+        ]
+
+        labor_results[
+            scenario_name
+        ] = labor[
+            "table"
+        ]
+
+        rows.append(
+            {
+                "Kịch bản": scenario_name,
+                "Share_K": float(
+                    shares[0]
+                ),
+                "Share_D": float(
+                    shares[1]
+                ),
+                "Share_AI": float(
+                    shares[2]
+                ),
+                "Share_H": float(
+                    shares[3]
+                ),
+                "GDP_2030": forecast[
+                    "GDP_2030"
+                ],
+                "Consumption_2030": forecast[
+                    "Consumption_2030"
+                ],
+                "GDP_Growth_2026_2030": forecast[
+                    "GDP_Growth_2026_2030"
+                ],
+                "Digital_2030": forecast[
+                    "Digital_2030"
+                ],
+                "AI_2030": forecast[
+                    "AI_2030"
+                ],
+                "Human_2030": forecast[
+                    "Human_2030"
+                ],
+                "NetJobs_million": labor[
+                    "net_jobs_total"
+                ],
+                "Displaced_million": labor[
+                    "displaced_total"
+                ],
+                "Retrained_million": labor[
+                    "retrained_total"
+                ],
+                **risk,
+            }
+        )
+
+    result = pd.DataFrame(
+        rows
     )
 
-    # Chuẩn hóa để tính điểm cân bằng tích hợp
-    result_df[
+    result[
         "GDP_norm"
     ] = minmax(
-        result_df[
+        result[
             "GDP_2030"
         ]
     )
 
-    result_df[
+    result[
+        "Jobs_norm"
+    ] = minmax(
+        result[
+            "NetJobs_million"
+        ]
+    )
+
+    result[
         "Inclusion_norm"
     ] = minmax(
-        result_df[
+        result[
             "InclusionScore"
         ]
     )
 
-    result_df[
+    result[
         "Cyber_norm"
     ] = minmax(
-        result_df[
+        result[
             "CyberRisk"
         ]
     )
 
-    result_df[
+    result[
         "Emission_norm"
     ] = minmax(
-        result_df[
+        result[
             "EmissionRisk"
         ]
     )
 
-    result_df[
-        "Điểm tích hợp"
+    result[
+        "IntegratedScore"
     ] = (
-        0.40
-        * result_df[
+        0.35
+        * result[
             "GDP_norm"
         ]
-        + 0.25
-        * result_df[
-            "Inclusion_norm"
+        + 0.20
+        * result[
+            "Jobs_norm"
         ]
         + 0.20
-        * (
-            1
-            - result_df[
-                "Cyber_norm"
-            ]
-        )
+        * result[
+            "Inclusion_norm"
+        ]
         + 0.15
         * (
             1
-            - result_df[
+            - result[
+                "Cyber_norm"
+            ]
+        )
+        + 0.10
+        * (
+            1
+            - result[
                 "Emission_norm"
             ]
         )
     )
 
-    result_df[
-        "Xếp hạng tích hợp"
+    result[
+        "IntegratedRank"
     ] = (
-        result_df[
-            "Điểm tích hợp"
+        result[
+            "IntegratedScore"
         ]
         .rank(
             ascending=False,
@@ -12721,971 +12990,726 @@ def _b12_build_results():
         .astype(int)
     )
 
-    return (
-        result_df,
-        simulation_dict,
-    )
+    return {
+        "scenarios": result.sort_values(
+            "IntegratedRank"
+        ).reset_index(drop=True),
+        "trajectories": trajectories,
+        "readiness": readiness,
+        "allocation": allocation,
+        "labor_results": labor_results,
+    }
 
 
-def _b12_policy_recommendations(
-    result_df,
+def _b12_validation(
+    pipeline,
 ):
-    """
-    Tạo danh sách cảnh báo và khuyến nghị từ kết quả kịch bản.
-    """
-    warnings = []
+    scenarios = pipeline[
+        "scenarios"
+    ]
 
-    for _, row in result_df.iterrows():
-        scenario = row[
-            "Kịch bản"
-        ]
+    allocation = pipeline[
+        "allocation"
+    ]
 
-        if (
-            row["Share_AI"] >= 0.40
-            and row["Share_H"] < 0.20
-        ):
-            warnings.append(
-                {
-                    "Kịch bản": scenario,
-                    "Loại": "Rủi ro nhân lực",
-                    "Mức": "Cao",
-                    "Khuyến nghị": (
-                        "AI cao nhưng tỷ trọng nhân lực thấp; "
-                        "cần tăng đào tạo, quản trị dữ liệu và chuyển đổi việc làm."
-                    ),
-                }
-            )
+    readiness = pipeline[
+        "readiness"
+    ]
 
-        if row["Share_K"] >= 0.65:
-            warnings.append(
-                {
-                    "Kịch bản": scenario,
-                    "Loại": "Rủi ro chậm số hóa",
-                    "Mức": "Cao",
-                    "Khuyến nghị": (
-                        "Phụ thuộc vốn vật chất; có nguy cơ bỏ lỡ tăng năng suất "
-                        "từ chuyển đổi số và AI."
-                    ),
-                }
-            )
-
-        if row["CyberRisk"] > result_df[
-            "CyberRisk"
-        ].median():
-            warnings.append(
-                {
-                    "Kịch bản": scenario,
-                    "Loại": "An ninh dữ liệu",
-                    "Mức": "Trung bình",
-                    "Khuyến nghị": (
-                        "Tăng đầu tư SOC, tiêu chuẩn dữ liệu, kiểm toán thuật toán "
-                        "và năng lực ứng phó sự cố."
-                    ),
-                }
-            )
-
-        if row["EmissionRisk"] > result_df[
-            "EmissionRisk"
-        ].median():
-            warnings.append(
-                {
-                    "Kịch bản": scenario,
-                    "Loại": "Môi trường",
-                    "Mức": "Trung bình",
-                    "Khuyến nghị": (
-                        "Bổ sung năng lượng sạch, trung tâm dữ liệu xanh "
-                        "và tiêu chuẩn hiệu quả năng lượng."
-                    ),
-                }
-            )
-
-        if row["InclusionScore"] < result_df[
-            "InclusionScore"
-        ].median():
-            warnings.append(
-                {
-                    "Kịch bản": scenario,
-                    "Loại": "Bao trùm số",
-                    "Mức": "Trung bình",
-                    "Khuyến nghị": (
-                        "Tăng đầu tư kỹ năng số, hỗ trợ vùng yếu "
-                        "và tiếp cận công nghệ cho doanh nghiệp nhỏ."
-                    ),
-                }
-            )
+    checks = [
+        {
+            "Kiểm tra": "5 kịch bản được tạo",
+            "Đạt": len(
+                scenarios
+            ) == 5,
+            "Giá trị": len(
+                scenarios
+            ),
+        },
+        {
+            "Kiểm tra": "Tỷ trọng mỗi kịch bản bằng 1",
+            "Đạt": bool(
+                np.allclose(
+                    scenarios[
+                        [
+                            "Share_K",
+                            "Share_D",
+                            "Share_AI",
+                            "Share_H",
+                        ]
+                    ].sum(axis=1),
+                    1.0,
+                )
+            ),
+            "Giá trị": scenarios[
+                [
+                    "Share_K",
+                    "Share_D",
+                    "Share_AI",
+                    "Share_H",
+                ]
+            ].sum(axis=1).round(
+                6
+            ).tolist(),
+        },
+        {
+            "Kiểm tra": "GDP 2030 hữu hạn và dương",
+            "Đạt": bool(
+                np.isfinite(
+                    scenarios[
+                        "GDP_2030"
+                    ]
+                ).all()
+                and (
+                    scenarios[
+                        "GDP_2030"
+                    ]
+                    > 0
+                ).all()
+            ),
+            "Giá trị": float(
+                scenarios[
+                    "GDP_2030"
+                ].min()
+            ),
+        },
+        {
+            "Kiểm tra": "Ngân sách M3 không vượt 50.000",
+            "Đạt": (
+                allocation[
+                    "total_budget"
+                ]
+                <= 50000.0
+                + 1e-6
+            ),
+            "Giá trị": allocation[
+                "total_budget"
+            ],
+        },
+        {
+            "Kiểm tra": "Nhân lực M3 tối thiểu 12.000",
+            "Đạt": (
+                allocation[
+                    "human_budget"
+                ]
+                >= 12000.0
+                - 1e-6
+            ),
+            "Giá trị": allocation[
+                "human_budget"
+            ],
+        },
+        {
+            "Kiểm tra": "M2 xếp hạng đủ 6 vùng",
+            "Đạt": (
+                len(
+                    readiness
+                )
+                == 6
+                and set(
+                    readiness[
+                        "ReadinessRank"
+                    ]
+                )
+                == set(
+                    range(
+                        1,
+                        7,
+                    )
+                )
+            ),
+            "Giá trị": readiness[
+                "ReadinessRank"
+            ].tolist(),
+        },
+        {
+            "Kiểm tra": "IntegratedScore nằm trong [0,1]",
+            "Đạt": bool(
+                scenarios[
+                    "IntegratedScore"
+                ].between(
+                    0.0,
+                    1.0,
+                ).all()
+            ),
+            "Giá trị": [
+                float(
+                    scenarios[
+                        "IntegratedScore"
+                    ].min()
+                ),
+                float(
+                    scenarios[
+                        "IntegratedScore"
+                    ].max()
+                ),
+            ],
+        },
+    ]
 
     return pd.DataFrame(
-        warnings
+        checks
     )
 
 
 def page_12():
     hero(
-        "Bài 12 — Đồ án tích hợp hệ thống hỗ trợ quyết định AIDEOM-VN",
-        "Tích hợp các mô hình thành dashboard hỗ trợ quyết định với 6 module, 5 kịch bản, KPI 2030, cảnh báo rủi ro và khuyến nghị chính sách.",
-        ["12.1-12.6", "Integrated dashboard", "5 scenarios", "KPI 2030", "Decision support"],
+        "Bài 12 — Hệ thống hỗ trợ quyết định tích hợp AIDEOM-VN",
+        "Kết nối thật sáu module từ dự báo, xếp hạng vùng, phân bổ ngân sách, lao động và rủi ro đến dashboard so sánh năm kịch bản và kiểm định pipeline.",
+        ["12.1-12.6", "Integrated pipeline", "6 modules", "5 scenarios", "Validation"],
     )
 
-    (
-        result_df,
-        simulations,
-    ) = _b12_build_results()
+    with st.spinner(
+        "Đang chạy pipeline M1-M6..."
+    ):
+        pipeline = (
+            _b12_run_pipeline()
+        )
 
-    # =====================================================
-    # 12.1. Yêu cầu chức năng
-    # =====================================================
-    st.markdown(
-        "## 12.1. Yêu cầu chức năng: 6 module tích hợp"
-    )
+    scenarios = pipeline[
+        "scenarios"
+    ]
 
-    module_table = pd.DataFrame(
+    st.markdown("## 12.1. Kiến trúc sáu module")
+
+    architecture = pd.DataFrame(
         [
             [
                 "M1",
                 "Dự báo kinh tế",
-                "Dữ liệu vĩ mô 2020-2025",
-                "GDP, TFP, lao động 2026-2030",
-                "Cobb-Douglas",
+                "compute_tfp + simulate_dynamic",
+                "GDP, D, AI, H năm 2030",
             ],
             [
                 "M2",
-                "Đánh giá sẵn sàng số",
-                "Dữ liệu ngành và vùng",
-                "Digital Index, AI Readiness",
-                "TOPSIS + Entropy",
+                "Sẵn sàng vùng",
+                "TOPSIS từ dữ liệu 6 vùng",
+                "Điểm và thứ hạng vùng",
             ],
             [
                 "M3",
-                "Tối ưu phân bổ",
-                "Ngân sách, hệ số tác động",
-                "Phân bổ ngành-vùng-thời gian",
-                "LP + MIP + Dynamic",
+                "Phân bổ ngân sách",
+                "LP Bài 4 hoặc LP dự phòng",
+                "Ma trận 6 vùng × 4 hạng mục",
             ],
             [
                 "M4",
-                "Mô phỏng lao động",
-                "Đầu tư AI và đào tạo",
-                "NetJob theo ngành",
-                "LP lao động",
+                "Lao động và AI",
+                "Dữ liệu 10 ngành",
+                "Việc làm tạo mới, mất đi, đào tạo lại",
             ],
             [
                 "M5",
-                "Đánh giá rủi ro",
-                "Kịch bản và tham số rủi ro",
-                "Cyber, phát thải, bất định",
-                "Pareto + Stochastic",
+                "Rủi ro",
+                "Cơ cấu K-D-AI-H",
+                "Cyber, phát thải, bao trùm, tập trung",
             ],
             [
                 "M6",
-                "Dashboard tích hợp",
+                "Dashboard",
                 "Đầu ra M1-M5",
-                "KPI, cảnh báo, khuyến nghị",
-                "Streamlit + Plotly",
+                "KPI, xếp hạng, cảnh báo, tải CSV",
             ],
         ],
         columns=[
             "Module",
-            "Tên module",
-            "Đầu vào",
+            "Chức năng",
+            "Nguồn đầu vào",
             "Đầu ra",
-            "Kỹ thuật",
         ],
     )
 
     st.dataframe(
-        module_table,
+        architecture,
         use_container_width=True,
         hide_index=True,
     )
 
-    # =====================================================
-    # 12.2. Năm kịch bản
-    # =====================================================
-    st.markdown(
-        "## 12.2. Năm kịch bản chính sách"
-    )
-
-    scenario_table = pd.DataFrame(
-        [
-            [
-                "S1 - Truyền thống",
-                "70% K + 10% D + 10% AI + 10% H",
-                "Ưu tiên vốn vật chất và hạ tầng truyền thống",
-            ],
-            [
-                "S2 - Số hóa nhanh",
-                "25% K + 45% D + 15% AI + 15% H",
-                "Tăng mạnh chuyển đổi số doanh nghiệp và dịch vụ công",
-            ],
-            [
-                "S3 - AI dẫn dắt",
-                "20% K + 20% D + 45% AI + 15% H",
-                "Ưu tiên AI, dữ liệu và năng lực tính toán",
-            ],
-            [
-                "S4 - Bao trùm số",
-                "30% K + 20% D + 10% AI + 40% H",
-                "Ưu tiên nhân lực, kỹ năng và thu hẹp khoảng cách số",
-            ],
-            [
-                "S5 - Tối ưu cân bằng",
-                "34% K + 26% D + 18% AI + 22% H",
-                "Cân bằng tăng trưởng, số hóa, AI và nhân lực",
-            ],
-        ],
-        columns=[
-            "Kịch bản",
-            "Cơ cấu phân bổ",
-            "Định hướng",
-        ],
-    )
+    st.markdown("## 12.2. Năm kịch bản")
 
     st.dataframe(
-        scenario_table,
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    # =====================================================
-    # 12.3. Dashboard tích hợp
-    # =====================================================
-    st.markdown(
-        "## 12.3. Dashboard tích hợp"
-    )
-
-    (
-        tab_overview,
-        tab_allocation,
-        tab_scenarios,
-        tab_risk,
-        tab_custom,
-    ) = st.tabs(
-        [
-            "Tổng quan",
-            "Phân bổ",
-            "So sánh kịch bản",
-            "Cảnh báo rủi ro",
-            "Kịch bản tùy chỉnh",
-        ]
-    )
-
-    # -----------------------------------------------------
-    # Tổng quan
-    # -----------------------------------------------------
-    with tab_overview:
-        best_gdp = result_df.loc[
-            result_df[
-                "GDP_2030"
-            ].idxmax()
-        ]
-
-        best_inclusion = result_df.loc[
-            result_df[
-                "InclusionScore"
-            ].idxmax()
-        ]
-
-        lowest_cyber = result_df.loc[
-            result_df[
-                "CyberRisk"
-            ].idxmin()
-        ]
-
-        best_integrated = result_df.sort_values(
-            "Xếp hạng tích hợp"
-        ).iloc[0]
-
-        kpi_cards(
-            [
-                (
-                    "GDP 2030 cao nhất",
-                    best_gdp[
-                        "Kịch bản"
-                    ],
-                    f"{best_gdp['GDP_2030']:,.0f}",
-                ),
-                (
-                    "Bao trùm cao nhất",
-                    best_inclusion[
-                        "Kịch bản"
-                    ],
-                    f"{best_inclusion['InclusionScore']:.1f}",
-                ),
-                (
-                    "Cyber risk thấp nhất",
-                    lowest_cyber[
-                        "Kịch bản"
-                    ],
-                    f"{lowest_cyber['CyberRisk']:.1f}",
-                ),
-                (
-                    "Xếp hạng tích hợp số 1",
-                    best_integrated[
-                        "Kịch bản"
-                    ],
-                    f"Điểm={best_integrated['Điểm tích hợp']:.3f}",
-                ),
-            ]
-        )
-
-        display_columns = [
-            "Kịch bản",
-            "GDP_2030",
-            "Tiêu dùng_2030",
-            "Tăng trưởng 2026-2030 (%)",
-            "CyberRisk",
-            "EmissionRisk",
-            "InclusionScore",
-            "Điểm tích hợp",
-            "Xếp hạng tích hợp",
-        ]
-
-        st.dataframe(
-            result_df[
-                display_columns
-            ]
-            .sort_values(
-                "Xếp hạng tích hợp"
-            )
-            .style.format(
-                {
-                    "GDP_2030": "{:,.0f}",
-                    "Tiêu dùng_2030": "{:,.0f}",
-                    "Tăng trưởng 2026-2030 (%)": "{:.2f}",
-                    "CyberRisk": "{:.2f}",
-                    "EmissionRisk": "{:.2f}",
-                    "InclusionScore": "{:.2f}",
-                    "Điểm tích hợp": "{:.4f}",
-                }
-            ),
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        ranking_figure = px.bar(
-            result_df.sort_values(
-                "Điểm tích hợp",
-                ascending=False,
-            ),
-            x="Kịch bản",
-            y="Điểm tích hợp",
-            color="Kịch bản",
-            text="Điểm tích hợp",
-            template=PLOT_TEMPLATE,
-            title="Xếp hạng tích hợp năm kịch bản",
-        )
-
-        ranking_figure.update_layout(
-            height=470,
-            showlegend=False,
-            margin=dict(
-                l=10,
-                r=10,
-                t=54,
-                b=10,
-            ),
-        )
-
-        st.plotly_chart(
-            ranking_figure,
-            use_container_width=True,
-        )
-
-    # -----------------------------------------------------
-    # Phân bổ
-    # -----------------------------------------------------
-    with tab_allocation:
-        allocation_long = result_df.melt(
-            id_vars="Kịch bản",
-            value_vars=[
-                "Share_K",
-                "Share_D",
-                "Share_AI",
-                "Share_H",
-            ],
-            var_name="Hạng mục",
-            value_name="Tỷ trọng",
-        )
-
-        allocation_figure = px.bar(
-            allocation_long,
-            x="Kịch bản",
-            y="Tỷ trọng",
-            color="Hạng mục",
-            barmode="stack",
-            template=PLOT_TEMPLATE,
-            title="Cơ cấu phân bổ của năm kịch bản",
-        )
-
-        allocation_figure.update_yaxes(
-            tickformat=".0%"
-        )
-
-        allocation_figure.update_layout(
-            height=500,
-            margin=dict(
-                l=10,
-                r=10,
-                t=54,
-                b=10,
-            ),
-        )
-
-        st.plotly_chart(
-            allocation_figure,
-            use_container_width=True,
-        )
-
-        allocation_table = result_df[
+        scenarios[
             [
                 "Kịch bản",
                 "Share_K",
                 "Share_D",
                 "Share_AI",
                 "Share_H",
+                "GDP_2030",
+                "NetJobs_million",
+                "InclusionScore",
+                "CyberRisk",
+                "EmissionRisk",
+                "IntegratedScore",
+                "IntegratedRank",
             ]
-        ].copy()
+        ],
+        use_container_width=True,
+        hide_index=True,
+    )
 
-        st.dataframe(
-            allocation_table.style.format(
-                {
-                    "Share_K": "{:.0%}",
-                    "Share_D": "{:.0%}",
-                    "Share_AI": "{:.0%}",
-                    "Share_H": "{:.0%}",
-                }
+    best = scenarios.iloc[0]
+
+    kpi_cards(
+        [
+            (
+                "Kịch bản số 1",
+                best[
+                    "Kịch bản"
+                ],
+                f"Điểm={best['IntegratedScore']:.4f}",
             ),
-            use_container_width=True,
-            hide_index=True,
-        )
+            (
+                "GDP 2030",
+                f"{best['GDP_2030']:,.1f}",
+                "kịch bản dẫn đầu",
+            ),
+            (
+                "Net jobs",
+                f"{best['NetJobs_million']:.3f} triệu",
+                "M4",
+            ),
+            (
+                "Bao trùm",
+                f"{best['InclusionScore']:.2f}",
+                "M5",
+            ),
+        ]
+    )
 
-    # -----------------------------------------------------
-    # So sánh kịch bản
-    # -----------------------------------------------------
-    with tab_scenarios:
-        selected_scenarios = st.multiselect(
-            "Chọn kịch bản để so sánh",
+    st.markdown("## 12.3. Dashboard tích hợp")
+
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
+        [
+            "M1 - Dự báo",
+            "M2 - Vùng",
+            "M3 - Phân bổ",
+            "M4 - Lao động",
+            "M5 - Rủi ro",
+            "M6 - Kiểm định",
+        ]
+    )
+
+    with tab1:
+        selected = st.multiselect(
+            "Chọn kịch bản",
             options=list(
-                simulations.keys()
+                pipeline[
+                    "trajectories"
+                ].keys()
             ),
             default=list(
-                simulations.keys()
+                pipeline[
+                    "trajectories"
+                ].keys()
             ),
-            key="b12_compare_scenarios",
+            key="b12_forecast_scenarios",
         )
 
-        if not selected_scenarios:
-            st.warning(
-                "Hãy chọn ít nhất một kịch bản."
+        rows = []
+
+        for scenario_name in selected:
+            temp = pipeline[
+                "trajectories"
+            ][scenario_name].copy()
+
+            temp[
+                "Kịch bản"
+            ] = scenario_name
+
+            rows.append(
+                temp
             )
-        else:
-            GDP_rows = []
 
-            for scenario in selected_scenarios:
-                temp = simulations[
-                    scenario
-                ][
-                    [
-                        "Năm",
-                        "GDP",
-                        "Tiêu dùng",
-                        "D",
-                        "AI",
-                        "H",
-                    ]
-                ].copy()
-
-                temp[
-                    "Kịch bản"
-                ] = scenario
-
-                GDP_rows.append(
-                    temp
-                )
-
-            compare_df = pd.concat(
-                GDP_rows,
+        if rows:
+            forecast_df = pd.concat(
+                rows,
                 ignore_index=True,
             )
 
-            GDP_figure = px.line(
-                compare_df,
+            fig = px.line(
+                forecast_df,
                 x="Năm",
-                y="GDP",
+                y="Y_GDP",
                 color="Kịch bản",
                 markers=True,
                 template=PLOT_TEMPLATE,
                 title="Quỹ đạo GDP 2026-2030",
             )
-
-            GDP_figure.update_layout(
-                height=480,
-                margin=dict(
-                    l=10,
-                    r=10,
-                    t=54,
-                    b=10,
-                ),
+            fig.update_layout(
+                height=500,
             )
-
             st.plotly_chart(
-                GDP_figure,
+                fig,
                 use_container_width=True,
             )
 
-            c1, c2 = st.columns(
-                2
-            )
+    with tab2:
+        readiness = pipeline[
+            "readiness"
+        ]
 
-            with c1:
-                GDP_bar = px.bar(
-                    result_df[
-                        result_df[
-                            "Kịch bản"
-                        ].isin(
-                            selected_scenarios
-                        )
-                    ],
-                    x="Kịch bản",
-                    y="GDP_2030",
-                    color="Kịch bản",
-                    template=PLOT_TEMPLATE,
-                    title="GDP năm 2030",
-                )
-
-                GDP_bar.update_layout(
-                    height=430,
-                    showlegend=False,
-                )
-
-                st.plotly_chart(
-                    GDP_bar,
-                    use_container_width=True,
-                )
-
-            with c2:
-                risk_long = result_df[
-                    result_df[
-                        "Kịch bản"
-                    ].isin(
-                        selected_scenarios
-                    )
-                ].melt(
-                    id_vars="Kịch bản",
-                    value_vars=[
-                        "CyberRisk",
-                        "EmissionRisk",
-                        "InclusionScore",
-                    ],
-                    var_name="KPI",
-                    value_name="Điểm",
-                )
-
-                risk_figure = px.bar(
-                    risk_long,
-                    x="Kịch bản",
-                    y="Điểm",
-                    color="KPI",
-                    barmode="group",
-                    template=PLOT_TEMPLATE,
-                    title="Rủi ro và bao trùm",
-                )
-
-                risk_figure.update_layout(
-                    height=430,
-                )
-
-                st.plotly_chart(
-                    risk_figure,
-                    use_container_width=True,
-                )
-
-    # -----------------------------------------------------
-    # Cảnh báo rủi ro
-    # -----------------------------------------------------
-    with tab_risk:
-        warning_df = (
-            _b12_policy_recommendations(
-                result_df
-            )
+        st.dataframe(
+            readiness,
+            use_container_width=True,
+            hide_index=True,
         )
 
-        if warning_df.empty:
-            st.success(
-                "Không phát hiện cảnh báo theo các ngưỡng hiện tại."
-            )
-        else:
-            st.dataframe(
-                warning_df,
-                use_container_width=True,
-                hide_index=True,
-            )
-
-            warning_count = (
-                warning_df.groupby(
-                    [
-                        "Kịch bản",
-                        "Mức",
-                    ]
-                )
-                .size()
-                .reset_index(
-                    name="Số cảnh báo"
-                )
-            )
-
-            warning_figure = px.bar(
-                warning_count,
-                x="Kịch bản",
-                y="Số cảnh báo",
-                color="Mức",
-                barmode="stack",
-                template=PLOT_TEMPLATE,
-                title="Số cảnh báo theo kịch bản",
-            )
-
-            warning_figure.update_layout(
-                height=450,
-                margin=dict(
-                    l=10,
-                    r=10,
-                    t=54,
-                    b=10,
-                ),
-            )
-
-            st.plotly_chart(
-                warning_figure,
-                use_container_width=True,
-            )
-
-            for _, warning in warning_df.iterrows():
-                st.markdown(
-                    (
-                        "<div class='warning-box'>"
-                        f"<b>{warning['Kịch bản']} — {warning['Loại']} "
-                        f"({warning['Mức']})</b><br>"
-                        f"{warning['Khuyến nghị']}"
-                        "</div>"
-                    ),
-                    unsafe_allow_html=True,
-                )
-
-    # -----------------------------------------------------
-    # Kịch bản tùy chỉnh
-    # -----------------------------------------------------
-    with tab_custom:
-        st.markdown(
-            "### Xây dựng kịch bản phân bổ riêng"
+        fig = px.bar(
+            readiness.sort_values(
+                "ReadinessScore"
+            ),
+            x="ReadinessScore",
+            y="Vùng",
+            orientation="h",
+            template=PLOT_TEMPLATE,
+            title="M2 - Sẵn sàng AI và số hóa theo vùng",
+        )
+        fig.update_layout(
+            height=480,
+        )
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
         )
 
-        c1, c2, c3, c4 = st.columns(
-            4
+    with tab3:
+        allocation = pipeline[
+            "allocation"
+        ]
+
+        st.caption(
+            f"Nguồn solver: {allocation['source']} | "
+            f"Z*={allocation['objective']:,.2f}"
         )
 
-        custom_k = c1.slider(
-            "K",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.34,
-            step=0.01,
-            key="b12_custom_k",
-        )
-
-        custom_d = c2.slider(
-            "D",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.26,
-            step=0.01,
-            key="b12_custom_d",
-        )
-
-        custom_ai = c3.slider(
-            "AI",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.18,
-            step=0.01,
-            key="b12_custom_ai",
-        )
-
-        custom_h = c4.slider(
-            "H",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.22,
-            step=0.01,
-            key="b12_custom_h",
-        )
-
-        raw_shares = np.array(
-            [
-                custom_k,
-                custom_d,
-                custom_ai,
-                custom_h,
+        st.dataframe(
+            allocation[
+                "table"
             ],
-            dtype=float,
+            use_container_width=True,
+            hide_index=True,
         )
 
-        if raw_shares.sum() <= 0:
-            st.error(
-                "Tổng tỷ trọng phải lớn hơn 0."
+        long_df = allocation[
+            "table"
+        ].melt(
+            id_vars=[
+                "Vùng",
+                "Tổng vùng",
+                "Digital sau đầu tư",
+            ],
+            value_vars=[
+                "I - Hạ tầng số",
+                "D - CĐS DN",
+                "AI",
+                "H - Nhân lực số",
+            ],
+            var_name="Hạng mục",
+            value_name="Ngân sách",
+        )
+
+        fig = px.bar(
+            long_df,
+            x="Vùng",
+            y="Ngân sách",
+            color="Hạng mục",
+            barmode="stack",
+            template=PLOT_TEMPLATE,
+            title="M3 - Phân bổ ngân sách vùng",
+        )
+        fig.update_layout(
+            height=520,
+        )
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+        )
+
+    with tab4:
+        selected_labor_scenario = (
+            st.selectbox(
+                "Kịch bản lao động",
+                options=list(
+                    pipeline[
+                        "labor_results"
+                    ].keys()
+                ),
+                index=4,
+                key="b12_labor_scenario",
+            )
+        )
+
+        labor_df = pipeline[
+            "labor_results"
+        ][selected_labor_scenario]
+
+        st.dataframe(
+            labor_df,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        fig = px.bar(
+            labor_df.sort_values(
+                "NetJobs_million"
+            ),
+            x="NetJobs_million",
+            y="Ngành",
+            orientation="h",
+            template=PLOT_TEMPLATE,
+            title="M4 - Việc làm ròng theo ngành",
+        )
+        fig.update_layout(
+            height=560,
+        )
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+        )
+
+    with tab5:
+        risk_long = scenarios.melt(
+            id_vars="Kịch bản",
+            value_vars=[
+                "CyberRisk",
+                "EmissionRisk",
+                "InclusionScore",
+                "ConcentrationRisk",
+            ],
+            var_name="KPI",
+            value_name="Điểm",
+        )
+
+        fig = px.bar(
+            risk_long,
+            x="Kịch bản",
+            y="Điểm",
+            color="KPI",
+            barmode="group",
+            template=PLOT_TEMPLATE,
+            title="M5 - Rủi ro và bao trùm",
+        )
+        fig.update_layout(
+            height=500,
+        )
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+        )
+
+        warnings = []
+
+        for _, row in scenarios.iterrows():
+            if (
+                row["Share_AI"]
+                >= 0.40
+                and row[
+                    "Share_H"
+                ]
+                < 0.20
+            ):
+                warnings.append(
+                    f"{row['Kịch bản']}: AI cao nhưng nhân lực thấp."
+                )
+
+            if row[
+                "CyberRisk"
+            ] > scenarios[
+                "CyberRisk"
+            ].median():
+                warnings.append(
+                    f"{row['Kịch bản']}: cyber risk trên trung vị."
+                )
+
+            if row[
+                "InclusionScore"
+            ] < scenarios[
+                "InclusionScore"
+            ].median():
+                warnings.append(
+                    f"{row['Kịch bản']}: bao trùm dưới trung vị."
+                )
+
+        for warning in warnings:
+            st.markdown(
+                f"<div class='warning-box'>{warning}</div>",
+                unsafe_allow_html=True,
+            )
+
+    with tab6:
+        validation = (
+            _b12_validation(
+                pipeline
+            )
+        )
+
+        st.dataframe(
+            validation,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        passed = int(
+            validation[
+                "Đạt"
+            ].sum()
+        )
+
+        kpi_cards(
+            [
+                (
+                    "Số kiểm định đạt",
+                    f"{passed}/{len(validation)}",
+                    "pipeline self-test",
+                ),
+                (
+                    "M1-M5",
+                    "Đã kết nối",
+                    "M6 nhận đầu ra thật",
+                ),
+                (
+                    "Số vùng",
+                    str(
+                        len(
+                            pipeline[
+                                "readiness"
+                            ]
+                        )
+                    ),
+                    "M2",
+                ),
+                (
+                    "Ngân sách M3",
+                    f"{pipeline['allocation']['total_budget']:,.0f}",
+                    "không vượt 50.000",
+                ),
+            ]
+        )
+
+        if bool(
+            validation[
+                "Đạt"
+            ].all()
+        ):
+            st.success(
+                "Pipeline vượt qua toàn bộ kiểm định nội bộ."
             )
         else:
-            normalized_shares = (
-                raw_shares
-                / raw_shares.sum()
+            st.error(
+                "Có kiểm định chưa đạt; không nên coi kết quả là final."
             )
 
-            custom_simulation = (
-                _b12_simulate_scenario(
-                    normalized_shares,
-                    start_year=2026,
-                    end_year=2030,
-                    investment_rate=0.22,
-                )
-            )
+    st.markdown("## 12.4. Sản phẩm bàn giao")
 
-            custom_last = (
-                custom_simulation.iloc[-1]
-            )
-
-            kpi_cards(
-                [
-                    (
-                        "GDP 2030",
-                        f"{custom_last['GDP']:,.0f}",
-                        "kịch bản tùy chỉnh",
-                    ),
-                    (
-                        "Tiêu dùng 2030",
-                        f"{custom_last['Tiêu dùng']:,.0f}",
-                        "kịch bản tùy chỉnh",
-                    ),
-                    (
-                        "Cyber risk",
-                        f"{custom_last['CyberRisk']:.2f}",
-                        "càng thấp càng tốt",
-                    ),
-                    (
-                        "Bao trùm",
-                        f"{custom_last['InclusionScore']:.2f}",
-                        "càng cao càng tốt",
-                    ),
-                ]
-            )
-
-            normalized_table = pd.DataFrame(
-                {
-                    "Hạng mục": [
-                        "K",
-                        "D",
-                        "AI",
-                        "H",
-                    ],
-                    "Tỷ trọng chuẩn hóa": normalized_shares,
-                }
-            )
-
-            st.dataframe(
-                normalized_table.style.format(
-                    {
-                        "Tỷ trọng chuẩn hóa": "{:.1%}",
-                    }
-                ),
-                use_container_width=True,
-                hide_index=True,
-            )
-
-            custom_figure = px.line(
-                custom_simulation,
-                x="Năm",
-                y=[
-                    "GDP",
-                    "Tiêu dùng",
-                ],
-                markers=True,
-                template=PLOT_TEMPLATE,
-                title="Quỹ đạo kịch bản tùy chỉnh",
-            )
-
-            custom_figure.update_layout(
-                height=450,
-            )
-
-            st.plotly_chart(
-                custom_figure,
-                use_container_width=True,
-            )
-
-    # =====================================================
-    # 12.4. Sản phẩm bàn giao
-    # =====================================================
-    st.markdown(
-        "## 12.4. Sản phẩm bàn giao"
-    )
-
-    deliverable_table = pd.DataFrame(
+    deliverables = pd.DataFrame(
         [
             [
-                "Mã nguồn Python",
-                "app.py, requirements.txt, dữ liệu và README",
-                "GitHub",
+                "Dashboard",
+                "12 trang Streamlit",
+                "Hoàn thành",
             ],
             [
-                "Dashboard",
-                "12 menu bài tập và các mô hình tích hợp",
-                "Streamlit Cloud",
+                "Mã nguồn",
+                "app.py + requirements.txt + data",
+                "Hoàn thành",
+            ],
+            [
+                "Kiểm định",
+                "Self-test pipeline M1-M6",
+                "Hoàn thành trong Bài 12",
             ],
             [
                 "Báo cáo",
-                "15-25 trang, tối thiểu 5 hình và 4 bảng",
-                "Word/PDF",
+                "Word/PDF 15-25 trang",
+                "Cần nộp kèm",
             ],
             [
                 "Slide",
-                "Khoảng 15 slide, thuyết minh 20 phút",
-                "PowerPoint",
+                "Khoảng 15 slide",
+                "Cần nộp kèm",
             ],
             [
-                "Video demo",
-                "3-5 phút giới thiệu chức năng chính",
-                "MP4 hoặc liên kết",
+                "Video",
+                "Demo 3-5 phút",
+                "Cần nộp kèm",
             ],
         ],
         columns=[
             "Sản phẩm",
             "Nội dung",
-            "Định dạng",
+            "Trạng thái",
         ],
     )
 
     st.dataframe(
-        deliverable_table,
+        deliverables,
         use_container_width=True,
         hide_index=True,
     )
 
-    # =====================================================
-    # 12.5. Tiêu chí đánh giá
-    # =====================================================
-    st.markdown(
-        "## 12.5. Tiêu chí đánh giá"
-    )
+    st.markdown("## 12.5. Tiêu chí đánh giá")
 
-    rubric_table = pd.DataFrame(
+    rubric = pd.DataFrame(
         [
             [
-                "Mô hình toán học",
+                "Mô hình toán",
                 20,
-                "Đúng biến, mục tiêu, ràng buộc và diễn giải",
             ],
             [
-                "Chất lượng mã nguồn",
+                "Chất lượng code",
                 20,
-                "Cấu trúc rõ, chạy ổn định, có kiểm tra lỗi",
             ],
             [
                 "Dữ liệu Việt Nam",
                 15,
-                "Có dữ liệu và bối cảnh phù hợp",
             ],
             [
                 "Phân tích chính sách",
                 20,
-                "Giải thích kết quả và đánh đổi",
             ],
             [
-                "Trực quan và dashboard",
+                "Dashboard",
                 15,
-                "Bảng, biểu đồ, tương tác và tải kết quả",
             ],
             [
                 "Báo cáo và thuyết trình",
                 10,
-                "Trình bày logic, đúng thời lượng",
             ],
         ],
         columns=[
-            "Hạng mục",
+            "Tiêu chí",
             "Trọng số (%)",
-            "Yêu cầu",
         ],
     )
 
     st.dataframe(
-        rubric_table,
+        rubric,
         use_container_width=True,
         hide_index=True,
     )
 
-    rubric_figure = px.pie(
-        rubric_table,
-        names="Hạng mục",
-        values="Trọng số (%)",
-        template=PLOT_TEMPLATE,
-        title="Cơ cấu tiêu chí đánh giá",
-    )
-
-    rubric_figure.update_layout(
-        height=480,
-    )
-
-    st.plotly_chart(
-        rubric_figure,
-        use_container_width=True,
-    )
-
-    # =====================================================
-    # 12.6. Hướng mở rộng
-    # =====================================================
-    st.markdown(
-        "## 12.6. Hướng mở rộng"
-    )
-
+    st.markdown("## 12.6. Hướng mở rộng")
     st.markdown(
         """
-        - Phát triển use case chuyên sâu cho Đồng bằng sông Cửu Long, chế biến chế tạo hoặc bán dẫn.
-        - Mở rộng mô hình sang CGE/DSGE có yếu tố AI và kinh tế số.
-        - Tích hợp dữ liệu theo tháng hoặc quý từ nguồn chính thức.
-        - Huấn luyện mô hình RL offline và triển khai chính sách dưới dạng hệ thống khuyến nghị.
-        - Xây dựng multi-agent RL cho các bộ, ngành và địa phương.
-        - Bổ sung API AI để giải thích kết quả, nhưng vẫn giữ cơ chế kiểm tra và phê duyệt của con người.
+        - Tách M1-M5 thành package Python độc lập trong thư mục `src/`.
+        - Thêm unit test bằng pytest cho LP, TOPSIS, SP và RL.
+        - Kết nối API dữ liệu chính thức thay vì chỉ dùng CSV tĩnh.
+        - Huấn luyện DQN offline, lưu model và kiểm định nhiều seed.
+        - Bổ sung use case chuyên sâu cho Đồng bằng sông Cửu Long hoặc bán dẫn.
         """
     )
-
-    # =====================================================
-    # Tải kết quả
-    # =====================================================
-    export_columns = [
-        "Kịch bản",
-        "GDP_2030",
-        "Tiêu dùng_2030",
-        "D_2030",
-        "AI_2030",
-        "H_2030",
-        "CyberRisk",
-        "EmissionRisk",
-        "InclusionScore",
-        "Tăng trưởng 2026-2030 (%)",
-        "Điểm tích hợp",
-        "Xếp hạng tích hợp",
-    ]
 
     st.download_button(
         "Tải bảng tổng hợp năm kịch bản",
-        data=result_df[
-            export_columns
-        ].to_csv(
+        data=scenarios.to_csv(
             index=False
         ).encode(
             "utf-8-sig"
         ),
-        file_name="bai12_aideom_5_kich_ban.csv",
+        file_name="bai12_pipeline_5_kich_ban.csv",
         mime="text/csv",
-        key="download_bai12",
+        key="download_bai12_pipeline",
     )
 
 
