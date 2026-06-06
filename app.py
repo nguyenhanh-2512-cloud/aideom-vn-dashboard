@@ -13298,6 +13298,14 @@ def page_12():
         hide_index=True,
     )
 
+    st.markdown("### Sơ đồ luồng dữ liệu M1-M6")
+
+    st.plotly_chart(
+        _b12_flow_figure(),
+        use_container_width=True,
+        key="b12_flow_figure",
+    )
+
     st.markdown("## 12.2. Năm kịch bản")
 
     st.dataframe(
