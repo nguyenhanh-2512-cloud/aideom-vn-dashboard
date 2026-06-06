@@ -6885,8 +6885,9 @@ def page_7():
 
 def _b8_initial_state():
     """
-    Lấy trạng thái cuối năm 2025 từ hàm compute_tfp() đã có trong app.py.
-    Thứ tự trả về dự kiến:
+    Lấy trạng thái cuối năm 2025 từ hàm compute_tfp().
+
+    Thứ tự đầu ra của compute_tfp():
     years, Y, K, L, D, AI, H, A.
     """
     (
@@ -6912,6 +6913,27 @@ def _b8_initial_state():
     }
 
 
+def _b8_parameters():
+    """Bộ tham số động học dùng trong mô phỏng."""
+    return {
+        "start_year": 2026,
+        "end_year": 2035,
+        "investment_rate": 0.22,
+        "delta_K": 0.05,
+        "delta_D": 0.12,
+        "delta_AI": 0.15,
+        "mu_H": 0.02,
+        "theta_H": 0.80,
+        "scale_D": 240.0,
+        "scale_AI": 135.0,
+        "scale_H": 520.0,
+        "labor_growth": 0.006,
+        "tfp_base_growth": 0.0,
+        "share_lower_bound": 0.02,
+        "share_upper_bound": 0.85,
+    }
+
+
 def _b8_simulate(
     shares_matrix,
     invest_rates=None,
@@ -6922,7 +6944,7 @@ def _b8_simulate(
     Mô phỏng động giai đoạn 2026-2035.
 
     shares_matrix:
-        Ma trận 10×4, mỗi hàng là tỷ trọng đầu tư vào K, D, AI, H.
+        Ma trận 10x4, mỗi hàng là tỷ trọng đầu tư vào K, D, AI, H.
 
     invest_rates:
         Tỷ lệ đầu tư trên GDP từng năm. Nếu None, dùng 22%/năm.
@@ -6934,22 +6956,27 @@ def _b8_simulate(
         Hệ số chiết khấu phúc lợi.
     """
     initial = _b8_initial_state()
+    parameters = _b8_parameters()
 
     years = np.arange(
-        2026,
-        2036,
+        parameters["start_year"],
+        parameters["end_year"] + 1,
     )
-
-    T = len(years)
+    periods = len(years)
 
     shares_matrix = np.asarray(
         shares_matrix,
         dtype=float,
     )
 
-    if shares_matrix.shape != (T, 4):
+    if shares_matrix.shape != (periods, 4):
         raise ValueError(
-            "shares_matrix phải có kích thước 10×4."
+            "shares_matrix phải có kích thước 10x4."
+        )
+
+    if not np.isfinite(shares_matrix).all():
+        raise ValueError(
+            "shares_matrix chứa NaN hoặc giá trị vô hạn."
         )
 
     row_sum = shares_matrix.sum(
@@ -6957,9 +6984,7 @@ def _b8_simulate(
         keepdims=True,
     )
 
-    if np.any(
-        row_sum <= 0
-    ):
+    if np.any(row_sum <= 0):
         raise ValueError(
             "Mỗi năm phải có tổng tỷ trọng đầu tư lớn hơn 0."
         )
@@ -6971,8 +6996,8 @@ def _b8_simulate(
 
     if invest_rates is None:
         invest_rates = np.full(
-            T,
-            0.22,
+            periods,
+            parameters["investment_rate"],
             dtype=float,
         )
     else:
@@ -6981,38 +7006,44 @@ def _b8_simulate(
             dtype=float,
         )
 
-    if len(invest_rates) != T:
+    if invest_rates.shape != (periods,):
         raise ValueError(
-            "invest_rates phải có 10 phần tử."
+            "invest_rates phải có đúng 10 phần tử."
         )
 
-    # Trạng thái đầu năm 2026
+    if (
+        np.any(invest_rates <= 0)
+        or np.any(invest_rates >= 1)
+    ):
+        raise ValueError(
+            "Mỗi tỷ lệ đầu tư phải nằm trong khoảng (0,1)."
+        )
+
+    if not 0 < float(rho) <= 1:
+        raise ValueError(
+            "Hệ số chiết khấu rho phải nằm trong khoảng (0,1]."
+        )
+
+    if not 0 <= float(shock_2028) < 1:
+        raise ValueError(
+            "Cú sốc 2028 phải nằm trong khoảng [0,1)."
+        )
+
+    # Trạng thái đầu năm 2026.
     K = initial["K"] * 1.06
-    L = initial["L"] * 1.006
+    L = initial["L"] * (
+        1 + parameters["labor_growth"]
+    )
     D = initial["D"] + 0.80
     AI = initial["AI"] + 6.00
     H = initial["H"] + 0.80
     A = initial["A"] * 1.012
 
-    # Tham số động học
-    delta_K = 0.05
-    delta_D = 0.12
-    delta_AI = 0.15
-    mu_H = 0.02
-    theta_H = 0.80
-
-    # Hệ số quy đổi đầu tư thành biến trạng thái
-    scale_D = 240.0
-    scale_AI = 135.0
-    scale_H = 520.0
-
     welfare = 0.0
     rows = []
 
-    for t, year in enumerate(
-        years
-    ):
-        Y = (
+    for period, year in enumerate(years):
+        gdp_before_shock = (
             A
             * K**0.33
             * L**0.42
@@ -7021,51 +7052,53 @@ def _b8_simulate(
             * H**0.07
         )
 
-        if year == 2028:
-            Y *= (
-                1.0
-                - float(shock_2028)
-            )
+        shock_factor = (
+            1.0 - float(shock_2028)
+            if year == 2028
+            else 1.0
+        )
+
+        gdp = max(
+            gdp_before_shock * shock_factor,
+            1e-9,
+        )
 
         investment_rate = float(
-            invest_rates[t]
+            invest_rates[period]
         )
 
         total_investment = (
             investment_rate
-            * Y
+            * gdp
         )
 
         consumption = max(
-            Y - total_investment,
+            gdp - total_investment,
             1e-9,
         )
 
-        welfare += (
-            rho**t
-            * np.log(
-                consumption
-            )
+        period_utility = (
+            float(rho) ** period
+            * np.log(consumption)
         )
 
-        shares = shares_matrix[t]
+        welfare += period_utility
 
-        I_K = (
+        shares = shares_matrix[period]
+
+        investment_k = (
             shares[0]
             * total_investment
         )
-
-        I_D = (
+        investment_d = (
             shares[1]
             * total_investment
         )
-
-        I_AI = (
+        investment_ai = (
             shares[2]
             * total_investment
         )
-
-        I_H = (
+        investment_h = (
             shares[3]
             * total_investment
         )
@@ -7073,74 +7106,85 @@ def _b8_simulate(
         rows.append(
             [
                 year,
-                Y,
+                gdp,
+                gdp_before_shock,
                 consumption,
                 total_investment,
                 investment_rate,
                 K,
+                L,
                 D,
                 AI,
                 H,
                 A,
-                I_K,
-                I_D,
-                I_AI,
-                I_H,
+                investment_k,
+                investment_d,
+                investment_ai,
+                investment_h,
                 shares[0],
                 shares[1],
                 shares[2],
                 shares[3],
+                period_utility,
                 welfare,
             ]
         )
 
-        # Phương trình chuyển trạng thái
+        # Phương trình chuyển trạng thái.
         K = (
-            (1 - delta_K) * K
-            + I_K
+            (1 - parameters["delta_K"]) * K
+            + investment_k
         )
 
         D = max(
             1e-6,
-            (1 - delta_D) * D
-            + I_D / scale_D,
+            (1 - parameters["delta_D"]) * D
+            + investment_d / parameters["scale_D"],
         )
 
         AI = max(
             1e-6,
-            (1 - delta_AI) * AI
-            + I_AI / scale_AI,
+            (1 - parameters["delta_AI"]) * AI
+            + investment_ai / parameters["scale_AI"],
         )
 
         H = max(
             1e-6,
             H
-            + theta_H * I_H / scale_H
-            - mu_H * H,
+            + parameters["theta_H"]
+            * investment_h
+            / parameters["scale_H"]
+            - parameters["mu_H"] * H,
         )
 
-        # TFP tăng nội sinh theo D, AI và H
+        # TFP tăng nội sinh theo số hóa, AI và nhân lực.
         A = (
             A
             * (
                 1
+                + parameters["tfp_base_growth"]
                 + 0.00008 * D
                 + 0.00004 * AI
                 + 0.00006 * H
             )
         )
 
-        L *= 1.006
+        L *= (
+            1
+            + parameters["labor_growth"]
+        )
 
     return pd.DataFrame(
         rows,
         columns=[
             "Năm",
             "GDP",
+            "GDP trước cú sốc",
             "Tiêu dùng",
             "Tổng đầu tư",
             "Tỷ lệ đầu tư",
             "K",
+            "L",
             "D",
             "AI",
             "H",
@@ -7153,12 +7197,127 @@ def _b8_simulate(
             "Share_D",
             "Share_AI",
             "Share_H",
+            "Phúc lợi kỳ",
             "Welfare_lũy_kế",
         ],
     )
 
 
-@st.cache_data
+def _b8_validation_table(
+    shares_matrix,
+    simulation,
+):
+    """Kiểm tra tính hợp lệ của nghiệm sau tối ưu."""
+    parameters = _b8_parameters()
+
+    shares_matrix = np.asarray(
+        shares_matrix,
+        dtype=float,
+    )
+
+    row_sums = shares_matrix.sum(
+        axis=1
+    )
+
+    checks = [
+        {
+            "Kiểm tra": "Đúng 10 năm 2026-2035",
+            "Giá trị": (
+                f"{int(simulation['Năm'].min())}-"
+                f"{int(simulation['Năm'].max())}"
+            ),
+            "Đạt": (
+                len(simulation) == 10
+                and simulation["Năm"].min() == 2026
+                and simulation["Năm"].max() == 2035
+            ),
+        },
+        {
+            "Kiểm tra": "Tổng tỷ trọng mỗi năm bằng 1",
+            "Giá trị": (
+                f"max sai lệch = "
+                f"{np.max(np.abs(row_sums - 1.0)):.2e}"
+            ),
+            "Đạt": bool(
+                np.allclose(
+                    row_sums,
+                    1.0,
+                    atol=1e-6,
+                )
+            ),
+        },
+        {
+            "Kiểm tra": "Tỷ trọng không dưới cận 0,02",
+            "Giá trị": f"{shares_matrix.min():.6f}",
+            "Đạt": bool(
+                shares_matrix.min()
+                >= parameters["share_lower_bound"]
+                - 1e-6
+            ),
+        },
+        {
+            "Kiểm tra": "Tỷ trọng không vượt cận 0,85",
+            "Giá trị": f"{shares_matrix.max():.6f}",
+            "Đạt": bool(
+                shares_matrix.max()
+                <= parameters["share_upper_bound"]
+                + 1e-6
+            ),
+        },
+        {
+            "Kiểm tra": "GDP dương và hữu hạn",
+            "Giá trị": f"min = {simulation['GDP'].min():,.3f}",
+            "Đạt": bool(
+                np.isfinite(
+                    simulation["GDP"]
+                ).all()
+                and (
+                    simulation["GDP"] > 0
+                ).all()
+            ),
+        },
+        {
+            "Kiểm tra": "Tiêu dùng dương và hữu hạn",
+            "Giá trị": (
+                f"min = "
+                f"{simulation['Tiêu dùng'].min():,.3f}"
+            ),
+            "Đạt": bool(
+                np.isfinite(
+                    simulation["Tiêu dùng"]
+                ).all()
+                and (
+                    simulation["Tiêu dùng"] > 0
+                ).all()
+            ),
+        },
+        {
+            "Kiểm tra": "Các biến trạng thái dương",
+            "Giá trị": (
+                f"min = "
+                f"{simulation[['K','L','D','AI','H','A']].min().min():.6f}"
+            ),
+            "Đạt": bool(
+                (
+                    simulation[
+                        [
+                            "K",
+                            "L",
+                            "D",
+                            "AI",
+                            "H",
+                            "A",
+                        ]
+                    ] > 0
+                ).all().all()
+            ),
+        },
+    ]
+
+    return pd.DataFrame(checks)
+
+
+@st.cache_data(show_spinner=False)
 def _b8_optimize_shares(
     rho=0.97,
     shock_2028=0.0,
@@ -7171,7 +7330,8 @@ def _b8_optimize_shares(
     """
     from scipy.optimize import minimize
 
-    T = 10
+    parameters = _b8_parameters()
+    periods = 10
 
     initial_share = np.array(
         [0.34, 0.26, 0.18, 0.22],
@@ -7180,106 +7340,256 @@ def _b8_optimize_shares(
 
     x0 = np.tile(
         initial_share,
-        T,
+        periods,
     )
 
-    def objective(
-        flat_shares
-    ):
+    investment_rates = np.full(
+        periods,
+        parameters["investment_rate"],
+        dtype=float,
+    )
+
+    def objective(flat_shares):
         shares = flat_shares.reshape(
-            T,
+            periods,
             4,
         )
 
         simulation = _b8_simulate(
             shares_matrix=shares,
-            invest_rates=np.full(
-                T,
-                0.22,
-            ),
+            invest_rates=investment_rates,
             shock_2028=shock_2028,
             rho=rho,
         )
 
-        return -float(
+        welfare = float(
             simulation.iloc[-1][
                 "Welfare_lũy_kế"
             ]
         )
 
-    constraints = []
+        if not np.isfinite(welfare):
+            return 1e12
 
-    for t in range(T):
-        constraints.append(
-            {
-                "type": "eq",
-                "fun": (
-                    lambda flat_shares, t=t:
-                    np.sum(
-                        flat_shares.reshape(
-                            T,
-                            4,
-                        )[t]
-                    )
-                    - 1.0
-                ),
-            }
-        )
+        return -welfare
+
+    constraints = [
+        {
+            "type": "eq",
+            "fun": (
+                lambda flat_shares, period=period:
+                np.sum(
+                    flat_shares.reshape(
+                        periods,
+                        4,
+                    )[period]
+                )
+                - 1.0
+            ),
+        }
+        for period in range(periods)
+    ]
 
     result = minimize(
         objective,
         x0,
         method="SLSQP",
         bounds=[
-            (0.02, 0.85)
+            (
+                parameters["share_lower_bound"],
+                parameters["share_upper_bound"],
+            )
         ]
         * (
-            T * 4
+            periods * 4
         ),
         constraints=constraints,
         options={
-            "maxiter": 300,
-            "ftol": 1e-8,
+            "maxiter": 500,
+            "ftol": 1e-9,
             "disp": False,
         },
     )
 
-    optimized_shares = result.x.reshape(
-        T,
+    candidate = (
+        np.asarray(
+            result.x,
+            dtype=float,
+        )
+        if result.x is not None
+        else x0.copy()
+    )
+
+    optimized_shares = candidate.reshape(
+        periods,
         4,
+    )
+
+    row_sums = optimized_shares.sum(
+        axis=1,
+        keepdims=True,
     )
 
     optimized_shares = (
         optimized_shares
-        / optimized_shares.sum(
-            axis=1,
-            keepdims=True,
+        / np.where(
+            row_sums == 0,
+            1.0,
+            row_sums,
         )
     )
 
     simulation = _b8_simulate(
         shares_matrix=optimized_shares,
-        invest_rates=np.full(
-            T,
-            0.22,
-        ),
+        invest_rates=investment_rates,
         shock_2028=shock_2028,
         rho=rho,
     )
 
+    max_equality_violation = float(
+        np.max(
+            np.abs(
+                optimized_shares.sum(axis=1)
+                - 1.0
+            )
+        )
+    )
+
+    success = bool(
+        result.success
+        and np.isfinite(
+            simulation[
+                "Welfare_lũy_kế"
+            ]
+        ).all()
+        and max_equality_violation <= 1e-5
+    )
+
+    solver_info = {
+        "success": success,
+        "message": str(result.message),
+        "status": int(result.status),
+        "iterations": int(
+            getattr(result, "nit", 0)
+        ),
+        "objective": float(
+            -result.fun
+        )
+        if np.isfinite(result.fun)
+        else np.nan,
+        "max_equality_violation": (
+            max_equality_violation
+        ),
+    }
+
     return (
         optimized_shares,
         simulation,
-        bool(result.success),
-        str(result.message),
+        solver_info,
+    )
+
+
+def _b8_strategy_comparison(
+    rho=0.97,
+):
+    """So sánh đầu tư trải đều và front-load với cùng tổng tỷ lệ đầu tư."""
+    fixed_shares = np.tile(
+        np.array(
+            [0.34, 0.26, 0.18, 0.22],
+            dtype=float,
+        ),
+        (10, 1),
+    )
+
+    equal_rates = np.full(
+        10,
+        0.22,
+        dtype=float,
+    )
+
+    front_load_rates = np.array(
+        [
+            0.28,
+            0.27,
+            0.26,
+            0.24,
+            0.22,
+            0.21,
+            0.19,
+            0.18,
+            0.18,
+            0.17,
+        ],
+        dtype=float,
+    )
+
+    equal_simulation = _b8_simulate(
+        shares_matrix=fixed_shares,
+        invest_rates=equal_rates,
+        shock_2028=0.0,
+        rho=rho,
+    )
+
+    front_simulation = _b8_simulate(
+        shares_matrix=fixed_shares,
+        invest_rates=front_load_rates,
+        shock_2028=0.0,
+        rho=rho,
+    )
+
+    comparison = pd.DataFrame(
+        {
+            "Chiến lược": [
+                "Trải đều",
+                "Front-load",
+            ],
+            "Tổng tỷ lệ đầu tư 10 năm": [
+                equal_rates.sum(),
+                front_load_rates.sum(),
+            ],
+            "Welfare": [
+                equal_simulation.iloc[-1][
+                    "Welfare_lũy_kế"
+                ],
+                front_simulation.iloc[-1][
+                    "Welfare_lũy_kế"
+                ],
+            ],
+            "GDP 2035": [
+                equal_simulation.iloc[-1]["GDP"],
+                front_simulation.iloc[-1]["GDP"],
+            ],
+            "Tiêu dùng 2035": [
+                equal_simulation.iloc[-1][
+                    "Tiêu dùng"
+                ],
+                front_simulation.iloc[-1][
+                    "Tiêu dùng"
+                ],
+            ],
+        }
+    )
+
+    return (
+        comparison,
+        equal_simulation,
+        front_simulation,
+        equal_rates,
+        front_load_rates,
     )
 
 
 def page_8():
     hero(
         "Bài 8 — Tối ưu động phân bổ liên thời gian 2026-2035",
-        "Trình bày đầy đủ các mục 8.1-8.4: động học K-D-AI-H, quỹ đạo tối ưu, cú sốc 2028 và so sánh đầu tư trải đều với front-load.",
-        ["8.1-8.4", "Dynamic optimization", "SLSQP", "Welfare", "2026-2035"],
+        "Mô hình hóa động học K-D-AI-H, tối ưu 40 biến tỷ trọng bằng SLSQP, kiểm định nghiệm, phân tích cú sốc 2028 và so sánh đầu tư trải đều với front-load.",
+        [
+            "8.1-8.5",
+            "Dynamic optimization",
+            "SLSQP",
+            "Welfare",
+            "Shock 2028",
+        ],
     )
 
     # =====================================================
@@ -7291,12 +7601,13 @@ def page_8():
 
     st.markdown(
         """
-        Đầu tư số có tác động tích lũy và độ trễ. Đầu tư mạnh vào AI hiện tại có thể
-        chưa tạo lợi ích nếu thiếu nhân lực số; ngược lại, đầu tư vào nhân lực và hạ tầng
-        tạo nền tảng hấp thụ công nghệ trong dài hạn.
+        Đầu tư số có tác động tích lũy và độ trễ. Đầu tư mạnh vào AI ở hiện tại
+        có thể chưa tạo lợi ích nếu thiếu nhân lực số; ngược lại, đầu tư vào nhân lực
+        và hạ tầng tạo nền tảng hấp thụ công nghệ trong dài hạn.
 
-        Bài 8 xây dựng mô hình tối ưu động giai đoạn **2026-2035** nhằm lựa chọn quỹ đạo
-        đầu tư vào vốn vật chất, chuyển đổi số, AI và nhân lực số để tối đa hóa tổng phúc lợi.
+        Bài 8 xây dựng mô hình tối ưu động giai đoạn **2026-2035** nhằm lựa chọn
+        quỹ đạo phân bổ đầu tư vào vốn vật chất, chuyển đổi số, AI và nhân lực số,
+        sao cho tổng phúc lợi tiêu dùng có chiết khấu đạt mức cao nhất.
         """
     )
 
@@ -7312,24 +7623,17 @@ def page_8():
     )
 
     st.latex(
-        r"\max"
+        r"\max\ "
         r"\sum_{t=2026}^{2035}"
-        r"\rho^{t-2026}"
-        r"\ln(C_t)"
+        r"\rho^{t-2026}\ln(C_t)"
     )
 
-    st.markdown(
-        "### Hàm sản xuất"
-    )
+    st.markdown("### Hàm sản xuất")
 
     st.latex(
         r"Y_t="
-        r"A_t"
-        r"K_t^{0.33}"
-        r"L_t^{0.42}"
-        r"D_t^{0.10}"
-        r"AI_t^{0.08}"
-        r"H_t^{0.07}"
+        r"A_tK_t^{0.33}L_t^{0.42}"
+        r"D_t^{0.10}AI_t^{0.08}H_t^{0.07}"
     )
 
     st.markdown(
@@ -7337,87 +7641,174 @@ def page_8():
     )
 
     st.latex(
-        r"K_{t+1}="
-        r"(1-\delta_K)K_t"
-        r"+I_{K,t}"
+        r"K_{t+1}=(1-\delta_K)K_t+I_{K,t}"
     )
-
     st.latex(
-        r"D_{t+1}="
-        r"(1-\delta_D)D_t"
-        r"+I_{D,t}"
+        r"D_{t+1}=(1-\delta_D)D_t+I_{D,t}/s_D"
     )
-
     st.latex(
-        r"AI_{t+1}="
-        r"(1-\delta_{AI})AI_t"
-        r"+I_{AI,t}"
+        r"AI_{t+1}=(1-\delta_{AI})AI_t+I_{AI,t}/s_{AI}"
     )
-
     st.latex(
-        r"H_{t+1}="
-        r"H_t+\theta_HI_{H,t}"
-        r"-\mu H_t"
+        r"H_{t+1}=H_t+\theta_HI_{H,t}/s_H-\mu_HH_t"
+    )
+    st.latex(
+        r"C_t=Y_t-I_t,\qquad "
+        r"I_{j,t}=s_{j,t}I_t"
+    )
+    st.latex(
+        r"\sum_js_{j,t}=1,\qquad "
+        r"0.02\leq s_{j,t}\leq0.85"
     )
 
+    st.info(
+        "SLSQP tối ưu 40 biến: bốn tỷ trọng đầu tư cho mỗi năm trong 10 năm."
+    )
+
+    # =====================================================
+    # 8.3. Dữ liệu và tham số
+    # =====================================================
     st.markdown(
-        "### Ràng buộc nguồn lực"
+        "## 8.3. Dữ liệu đầu vào và tham số"
     )
 
-    st.latex(
-        r"C_t"
-        r"+I_{K,t}"
-        r"+I_{D,t}"
-        r"+I_{AI,t}"
-        r"+I_{H,t}"
-        r"\leq Y_t"
+    initial = _b8_initial_state()
+    parameters = _b8_parameters()
+
+    initial_table = pd.DataFrame(
+        {
+            "Biến": [
+                "GDP Y",
+                "Vốn K",
+                "Lao động L",
+                "Số hóa D",
+                "Năng lực AI",
+                "Nhân lực H",
+                "TFP A",
+            ],
+            "Giá trị cuối năm 2025": [
+                initial["Y"],
+                initial["K"],
+                initial["L"],
+                initial["D"],
+                initial["AI"],
+                initial["H"],
+                initial["A"],
+            ],
+        }
     )
 
-    st.latex(
-        r"I_{K,t},I_{D,t},I_{AI,t},I_{H,t}\geq0"
+    parameter_table = pd.DataFrame(
+        {
+            "Tham số": [
+                "Tỷ lệ đầu tư/GDP",
+                "Khấu hao K",
+                "Khấu hao D",
+                "Khấu hao AI",
+                "Suy giảm H",
+                "Hiệu quả đầu tư H",
+                "Hệ số quy đổi D",
+                "Hệ số quy đổi AI",
+                "Hệ số quy đổi H",
+                "Tăng lao động",
+                "Cận dưới tỷ trọng",
+                "Cận trên tỷ trọng",
+            ],
+            "Ký hiệu": [
+                "i",
+                "delta_K",
+                "delta_D",
+                "delta_AI",
+                "mu_H",
+                "theta_H",
+                "s_D",
+                "s_AI",
+                "s_H",
+                "g_L",
+                "lb",
+                "ub",
+            ],
+            "Giá trị": [
+                parameters["investment_rate"],
+                parameters["delta_K"],
+                parameters["delta_D"],
+                parameters["delta_AI"],
+                parameters["mu_H"],
+                parameters["theta_H"],
+                parameters["scale_D"],
+                parameters["scale_AI"],
+                parameters["scale_H"],
+                parameters["labor_growth"],
+                parameters["share_lower_bound"],
+                parameters["share_upper_bound"],
+            ],
+        }
+    )
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        st.dataframe(
+            initial_table,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    with c2:
+        st.dataframe(
+            parameter_table,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    st.caption(
+        "Trạng thái năm 2025 được lấy từ dữ liệu vĩ mô và hàm Cobb-Douglas của Bài 1. "
+        "Các tham số động học là giả định mô phỏng, cần được nêu rõ trong báo cáo."
+    )
+
+    # =====================================================
+    # 8.4. Yêu cầu lập trình
+    # =====================================================
+    st.markdown(
+        "## 8.4. Yêu cầu lập trình"
     )
 
     rho = st.slider(
-        "Hệ số chiết khấu ρ",
+        "Hệ số chiết khấu phúc lợi rho",
         min_value=0.90,
-        max_value=0.99,
+        max_value=1.00,
         value=0.97,
         step=0.01,
-        key="b8_rho",
+        key="b8_rho_fixed",
     )
 
-    (
-        optimal_shares,
-        optimal_simulation,
-        solver_success,
-        solver_message,
-    ) = _b8_optimize_shares(
-        rho=rho,
-        shock_2028=0.0,
-    )
+    with st.spinner(
+        "Đang tối ưu quỹ đạo đầu tư 2026-2035..."
+    ):
+        (
+            optimal_shares,
+            optimal_simulation,
+            solver_info,
+        ) = _b8_optimize_shares(
+            rho=float(rho),
+            shock_2028=0.0,
+        )
 
-    # =====================================================
-    # 8.3. Yêu cầu lập trình
-    # =====================================================
-    st.markdown(
-        "## 8.3. Yêu cầu lập trình"
-    )
-
-    tab831, tab832, tab833, tab834 = st.tabs(
+    tab841, tab842, tab843, tab844 = st.tabs(
         [
-            "8.3.1 - Tối ưu SLSQP",
-            "8.3.2 - Quỹ đạo",
-            "8.3.3 - Cú sốc 2028",
-            "8.3.4 - Hai chiến lược",
+            "8.4.1 - Tối ưu SLSQP",
+            "8.4.2 - Quỹ đạo động",
+            "8.4.3 - Cú sốc 2028",
+            "8.4.4 - Front-load & độ nhạy",
         ]
     )
 
     # -----------------------------------------------------
-    # 8.3.1
+    # 8.4.1
     # -----------------------------------------------------
-    with tab831:
+    with tab841:
         st.markdown(
-            "### Câu 8.3.1. Giải bài toán phi tuyến bằng SLSQP"
+            "### Câu 8.4.1. Giải bài toán phi tuyến bằng SLSQP"
         )
 
         shares_table = pd.DataFrame(
@@ -7433,10 +7824,7 @@ def page_8():
         shares_table.insert(
             0,
             "Năm",
-            np.arange(
-                2026,
-                2036,
-            ),
+            np.arange(2026, 2036),
         )
 
         kpi_cards(
@@ -7445,25 +7833,27 @@ def page_8():
                     "Trạng thái solver",
                     (
                         "Thành công"
-                        if solver_success
+                        if solver_info["success"]
                         else "Cảnh báo"
                     ),
-                    solver_message[:45],
+                    solver_info["message"][:45],
                 ),
                 (
-                    "Welfare",
-                    f"{optimal_simulation.iloc[-1]['Welfare_lũy_kế']:.3f}",
-                    f"ρ = {rho:.2f}",
+                    "Số vòng lặp",
+                    str(
+                        solver_info["iterations"]
+                    ),
+                    "SLSQP",
+                ),
+                (
+                    "Welfare tối ưu",
+                    f"{optimal_simulation.iloc[-1]['Welfare_lũy_kế']:.4f}",
+                    f"rho={rho:.2f}",
                 ),
                 (
                     "GDP năm 2035",
-                    f"{optimal_simulation.iloc[-1]['GDP']:,.0f}",
-                    "kết quả mô phỏng",
-                ),
-                (
-                    "Tiêu dùng 2035",
-                    f"{optimal_simulation.iloc[-1]['Tiêu dùng']:,.0f}",
-                    "kết quả mô phỏng",
+                    f"{optimal_simulation.iloc[-1]['GDP']:,.1f}",
+                    "nghìn tỷ VND",
                 ),
             ]
         )
@@ -7501,15 +7891,10 @@ def page_8():
             template=PLOT_TEMPLATE,
             title="Quỹ đạo tỷ trọng đầu tư tối ưu",
         )
-
         fig_shares.update_layout(
             height=480,
-            margin=dict(
-                l=10,
-                r=10,
-                t=54,
-                b=10,
-            ),
+            yaxis_title="Tỷ trọng đầu tư",
+            xaxis_title="Năm",
         )
 
         st.plotly_chart(
@@ -7517,50 +7902,39 @@ def page_8():
             use_container_width=True,
         )
 
-        with st.expander(
-            "Xem mã SLSQP rút gọn"
-        ):
-            st.code(
-                """from scipy.optimize import minimize
+        st.markdown(
+            "#### Kiểm định nghiệm sau tối ưu"
+        )
 
-def objective(flat_shares):
-    shares = flat_shares.reshape(10, 4)
-    simulation = simulate(shares)
-    welfare = simulation.iloc[-1][
-        "Welfare_lũy_kế"
-    ]
-    return -welfare
+        validation = _b8_validation_table(
+            optimal_shares,
+            optimal_simulation,
+        )
 
-constraints = [
-    {
-        "type": "eq",
-        "fun": lambda x, t=t:
-        x.reshape(10,4)[t].sum() - 1
-    }
-    for t in range(10)
-]
+        st.dataframe(
+            validation,
+            use_container_width=True,
+            hide_index=True,
+        )
 
-result = minimize(
-    objective,
-    x0,
-    method="SLSQP",
-    bounds=[(0.02,0.85)] * 40,
-    constraints=constraints
-)""",
-                language="python",
+        if bool(validation["Đạt"].all()):
+            st.success(
+                "Nghiệm vượt qua toàn bộ kiểm tra số và ràng buộc."
+            )
+        else:
+            st.error(
+                "Có ít nhất một kiểm tra chưa đạt; chưa nên sử dụng kết quả làm bản final."
             )
 
     # -----------------------------------------------------
-    # 8.3.2
+    # 8.4.2
     # -----------------------------------------------------
-    with tab832:
+    with tab842:
         st.markdown(
-            "### Câu 8.3.2. Vẽ quỹ đạo tối ưu K, D, AI, H, Y và C"
+            "### Câu 8.4.2. Vẽ quỹ đạo tối ưu K, D, AI, H, Y và C"
         )
 
-        c1, c2 = st.columns(
-            2
-        )
+        c1, c2 = st.columns(2)
 
         with c1:
             fig_output = px.line(
@@ -7575,17 +7949,11 @@ result = minimize(
                 template=PLOT_TEMPLATE,
                 title="GDP, tiêu dùng và đầu tư",
             )
-
             fig_output.update_layout(
-                height=460,
-                margin=dict(
-                    l=10,
-                    r=10,
-                    t=54,
-                    b=10,
-                ),
+                height=470,
+                xaxis_title="Năm",
+                yaxis_title="Nghìn tỷ VND",
             )
-
             st.plotly_chart(
                 fig_output,
                 use_container_width=True,
@@ -7613,17 +7981,11 @@ result = minimize(
                 template=PLOT_TEMPLATE,
                 title="Quỹ đạo K, D, AI và H",
             )
-
             fig_state.update_layout(
-                height=460,
-                margin=dict(
-                    l=10,
-                    r=10,
-                    t=54,
-                    b=10,
-                ),
+                height=470,
+                xaxis_title="Năm",
+                yaxis_title="Chỉ số/giá trị mô phỏng",
             )
-
             st.plotly_chart(
                 fig_state,
                 use_container_width=True,
@@ -7635,23 +7997,39 @@ result = minimize(
             hide_index=True,
         )
 
-    # -----------------------------------------------------
-    # 8.3.3
-    # -----------------------------------------------------
-    with tab833:
-        st.markdown(
-            "### Câu 8.3.3. Cú sốc GDP năm 2028 giảm 8% và tối ưu lại"
+        gdp_cagr = (
+            (
+                optimal_simulation.iloc[-1]["GDP"]
+                / optimal_simulation.iloc[0]["GDP"]
+            )
+            ** (1 / 9)
+            - 1
+        ) * 100
+
+        st.info(
+            f"GDP mô phỏng tăng bình quân khoảng **{gdp_cagr:.2f}%/năm** "
+            "trong giai đoạn 2026-2035 theo quỹ đạo tối ưu."
         )
 
-        (
-            shock_shares,
-            shock_simulation,
-            shock_success,
-            shock_message,
-        ) = _b8_optimize_shares(
-            rho=rho,
-            shock_2028=0.08,
+    # -----------------------------------------------------
+    # 8.4.3
+    # -----------------------------------------------------
+    with tab843:
+        st.markdown(
+            "### Câu 8.4.3. Cú sốc GDP năm 2028 giảm 8% và tối ưu lại"
         )
+
+        with st.spinner(
+            "Đang tối ưu lại sau cú sốc 2028..."
+        ):
+            (
+                shock_shares,
+                shock_simulation,
+                shock_solver_info,
+            ) = _b8_optimize_shares(
+                rho=float(rho),
+                shock_2028=0.08,
+            )
 
         comparison_shock = pd.DataFrame(
             {
@@ -7683,25 +8061,25 @@ result = minimize(
                     "Solver cú sốc",
                     (
                         "Thành công"
-                        if shock_success
+                        if shock_solver_info["success"]
                         else "Cảnh báo"
                     ),
-                    shock_message[:45],
+                    shock_solver_info["message"][:45],
                 ),
                 (
                     "Welfare mất đi",
                     f"{welfare_loss:.4f}",
-                    "so với kịch bản cơ sở",
+                    "so với cơ sở",
                 ),
                 (
                     "GDP 2035 thay đổi",
-                    f"{gdp_2035_change:+,.0f}",
-                    "sau tối ưu lại",
+                    f"{gdp_2035_change:+,.1f}",
+                    "nghìn tỷ VND",
                 ),
                 (
                     "Cú sốc năm 2028",
                     "-8%",
-                    "GDP",
+                    "GDP trong năm",
                 ),
             ]
         )
@@ -7717,17 +8095,11 @@ result = minimize(
             template=PLOT_TEMPLATE,
             title="Quỹ đạo GDP trước và sau cú sốc 2028",
         )
-
         fig_shock.update_layout(
             height=480,
-            margin=dict(
-                l=10,
-                r=10,
-                t=54,
-                b=10,
-            ),
+            xaxis_title="Năm",
+            yaxis_title="GDP, nghìn tỷ VND",
         )
-
         st.plotly_chart(
             fig_shock,
             use_container_width=True,
@@ -7735,23 +8107,20 @@ result = minimize(
 
         share_change = pd.DataFrame(
             {
-                "Năm": np.arange(
-                    2026,
-                    2036,
-                ),
-                "ΔShare_K": (
+                "Năm": np.arange(2026, 2036),
+                "Delta_Share_K": (
                     shock_shares[:, 0]
                     - optimal_shares[:, 0]
                 ),
-                "ΔShare_D": (
+                "Delta_Share_D": (
                     shock_shares[:, 1]
                     - optimal_shares[:, 1]
                 ),
-                "ΔShare_AI": (
+                "Delta_Share_AI": (
                     shock_shares[:, 2]
                     - optimal_shares[:, 2]
                 ),
-                "ΔShare_H": (
+                "Delta_Share_H": (
                     shock_shares[:, 3]
                     - optimal_shares[:, 3]
                 ),
@@ -7759,16 +8128,16 @@ result = minimize(
         )
 
         st.markdown(
-            "#### Chính sách tối ưu thay đổi sau cú sốc"
+            "#### Thay đổi cơ cấu đầu tư sau cú sốc"
         )
 
         st.dataframe(
             share_change.style.format(
                 {
-                    "ΔShare_K": "{:+.4f}",
-                    "ΔShare_D": "{:+.4f}",
-                    "ΔShare_AI": "{:+.4f}",
-                    "ΔShare_H": "{:+.4f}",
+                    "Delta_Share_K": "{:+.4f}",
+                    "Delta_Share_D": "{:+.4f}",
+                    "Delta_Share_AI": "{:+.4f}",
+                    "Delta_Share_H": "{:+.4f}",
                 }
             ),
             use_container_width=True,
@@ -7776,86 +8145,21 @@ result = minimize(
         )
 
     # -----------------------------------------------------
-    # 8.3.4
+    # 8.4.4
     # -----------------------------------------------------
-    with tab834:
+    with tab844:
         st.markdown(
-            "### Câu 8.3.4. So sánh đầu tư trải đều và front-load"
+            "### Câu 8.4.4. So sánh trải đều, front-load và độ nhạy rho"
         )
 
-        fixed_shares = np.tile(
-            np.array(
-                [0.34, 0.26, 0.18, 0.22]
-            ),
-            (
-                10,
-                1,
-            ),
-        )
-
-        # Tổng bằng 2,20 cho cả hai chiến lược
-        equal_rates = np.full(
-            10,
-            0.22,
-        )
-
-        front_load_rates = np.array(
-            [
-                0.28,
-                0.27,
-                0.26,
-                0.24,
-                0.22,
-                0.21,
-                0.19,
-                0.18,
-                0.18,
-                0.17,
-            ],
-            dtype=float,
-        )
-
-        equal_simulation = _b8_simulate(
-            shares_matrix=fixed_shares,
-            invest_rates=equal_rates,
-            shock_2028=0.0,
-            rho=rho,
-        )
-
-        front_simulation = _b8_simulate(
-            shares_matrix=fixed_shares,
-            invest_rates=front_load_rates,
-            shock_2028=0.0,
-            rho=rho,
-        )
-
-        strategy_comparison = pd.DataFrame(
-            {
-                "Chiến lược": [
-                    "Trải đều",
-                    "Front-load",
-                ],
-                "Tổng tỷ lệ đầu tư 10 năm": [
-                    equal_rates.sum(),
-                    front_load_rates.sum(),
-                ],
-                "Welfare": [
-                    equal_simulation.iloc[-1][
-                        "Welfare_lũy_kế"
-                    ],
-                    front_simulation.iloc[-1][
-                        "Welfare_lũy_kế"
-                    ],
-                ],
-                "GDP 2035": [
-                    equal_simulation.iloc[-1]["GDP"],
-                    front_simulation.iloc[-1]["GDP"],
-                ],
-                "Tiêu dùng 2035": [
-                    equal_simulation.iloc[-1]["Tiêu dùng"],
-                    front_simulation.iloc[-1]["Tiêu dùng"],
-                ],
-            }
+        (
+            strategy_comparison,
+            equal_simulation,
+            front_simulation,
+            equal_rates,
+            front_load_rates,
+        ) = _b8_strategy_comparison(
+            rho=float(rho)
         )
 
         st.dataframe(
@@ -7867,18 +8171,12 @@ result = minimize(
         strategy_long = pd.concat(
             [
                 equal_simulation[
-                    [
-                        "Năm",
-                        "GDP",
-                    ]
+                    ["Năm", "GDP"]
                 ].assign(
                     Chiến_lược="Trải đều"
                 ),
                 front_simulation[
-                    [
-                        "Năm",
-                        "GDP",
-                    ]
+                    ["Năm", "GDP"]
                 ].assign(
                     Chiến_lược="Front-load"
                 ),
@@ -7895,20 +8193,97 @@ result = minimize(
             template=PLOT_TEMPLATE,
             title="GDP theo hai chiến lược đầu tư",
         )
-
         fig_strategy.update_layout(
-            height=480,
-            margin=dict(
-                l=10,
-                r=10,
-                t=54,
-                b=10,
-            ),
+            height=470,
+            xaxis_title="Năm",
+            yaxis_title="GDP, nghìn tỷ VND",
         )
-
         st.plotly_chart(
             fig_strategy,
             use_container_width=True,
+        )
+
+        rates_table = pd.DataFrame(
+            {
+                "Năm": np.arange(2026, 2036),
+                "Trải đều": equal_rates,
+                "Front-load": front_load_rates,
+            }
+        )
+
+        st.dataframe(
+            rates_table,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        sensitivity_rows = []
+
+        for rho_test in [
+            0.90,
+            0.95,
+            0.97,
+            0.99,
+            1.00,
+        ]:
+            (
+                comparison_test,
+                _,
+                _,
+                _,
+                _,
+            ) = _b8_strategy_comparison(
+                rho=rho_test
+            )
+
+            equal_welfare = float(
+                comparison_test.loc[
+                    comparison_test[
+                        "Chiến lược"
+                    ] == "Trải đều",
+                    "Welfare",
+                ].iloc[0]
+            )
+
+            front_welfare = float(
+                comparison_test.loc[
+                    comparison_test[
+                        "Chiến lược"
+                    ] == "Front-load",
+                    "Welfare",
+                ].iloc[0]
+            )
+
+            sensitivity_rows.append(
+                {
+                    "rho": rho_test,
+                    "Welfare trải đều": equal_welfare,
+                    "Welfare front-load": front_welfare,
+                    "Chênh lệch front-load": (
+                        front_welfare
+                        - equal_welfare
+                    ),
+                    "Chiến lược tốt hơn": (
+                        "Front-load"
+                        if front_welfare
+                        > equal_welfare
+                        else "Trải đều"
+                    ),
+                }
+            )
+
+        sensitivity_df = pd.DataFrame(
+            sensitivity_rows
+        )
+
+        st.markdown(
+            "#### Độ nhạy theo hệ số chiết khấu"
+        )
+
+        st.dataframe(
+            sensitivity_df,
+            use_container_width=True,
+            hide_index=True,
         )
 
         better_strategy = (
@@ -7919,94 +8294,146 @@ result = minimize(
         )
 
         st.success(
-            f"Chiến lược có phúc lợi cao hơn trong mô phỏng là **{better_strategy}**."
+            f"Với rho={rho:.2f}, chiến lược có phúc lợi cao hơn là "
+            f"**{better_strategy}**."
         )
 
     # =====================================================
     # Tải kết quả
     # =====================================================
+    shares_export = pd.DataFrame(
+        optimal_shares,
+        columns=[
+            "Share_K",
+            "Share_D",
+            "Share_AI",
+            "Share_H",
+        ],
+    )
+    shares_export.insert(
+        0,
+        "Năm",
+        np.arange(2026, 2036),
+    )
+
+    export_df = optimal_simulation.merge(
+        shares_export,
+        on=[
+            "Năm",
+            "Share_K",
+            "Share_D",
+            "Share_AI",
+            "Share_H",
+        ],
+        how="left",
+    )
+
     st.download_button(
-        "Tải quỹ đạo tối ưu Bài 8",
-        data=optimal_simulation.to_csv(
+        "Tải kết quả Bài 8 dạng CSV",
+        data=export_df.to_csv(
             index=False
         ).encode(
             "utf-8-sig"
         ),
-        file_name="bai8_quy_dao_toi_uu_2026_2035.csv",
+        file_name="bai8_toi_uu_dong_2026_2035.csv",
         mime="text/csv",
-        key="download_bai8",
+        key="download_bai8_fixed",
     )
 
     # =====================================================
-    # 8.4. Câu hỏi thảo luận chính sách
+    # 8.5. Câu hỏi thảo luận chính sách
     # =====================================================
     st.markdown(
-        "## 8.4. Câu hỏi thảo luận chính sách"
+        "## 8.5. Câu hỏi thảo luận chính sách"
     )
 
-    first_three_average = optimal_shares[
-        :3
-    ].mean(
-        axis=0
+    first_three_average = (
+        optimal_shares[:3].mean(axis=0)
+    )
+    last_three_average = (
+        optimal_shares[-3:].mean(axis=0)
     )
 
-    last_three_average = optimal_shares[
-        -3:
-    ].mean(
-        axis=0
-    )
+    component_names = [
+        "vốn K",
+        "số hóa D",
+        "AI",
+        "nhân lực H",
+    ]
 
-    front_loaded = bool(
-        (
-            first_three_average[
-                1:
-            ].sum()
-            > last_three_average[
-                1:
-            ].sum()
+    first_priority = component_names[
+        int(
+            np.argmax(
+                first_three_average
+            )
         )
-    )
+    ]
+
+    last_priority = component_names[
+        int(
+            np.argmax(
+                last_three_average
+            )
+        )
+    ]
 
     with st.expander(
-        "a) Quỹ đạo đầu tư tối ưu có front-loaded không?",
+        "a) Nên ưu tiên hạng mục nào trong ba năm đầu?",
         expanded=True,
     ):
         st.markdown(
-            (
-                "Kết quả cho thấy đầu tư số, AI và nhân lực trong ba năm đầu "
-                "cao hơn ba năm cuối, nên quỹ đạo có xu hướng **front-loaded**."
-                if front_loaded
-                else
-                "Kết quả không cho thấy xu hướng front-loaded rõ ràng; "
-                "tỷ trọng đầu tư số, AI và nhân lực khá ổn định hoặc tăng về cuối kỳ."
+            f"Theo nghiệm tối ưu, hạng mục có tỷ trọng bình quân lớn nhất "
+            f"trong ba năm đầu là **{first_priority}**. Kết quả phản ánh lợi ích "
+            "tích lũy và độ trễ của đầu tư, nhưng vẫn phụ thuộc vào bộ tham số mô phỏng."
+        )
+
+    with st.expander(
+        "b) Cơ cấu đầu tư thay đổi thế nào về cuối kỳ?",
+        expanded=True,
+    ):
+        st.markdown(
+            f"Trong ba năm cuối, hạng mục có tỷ trọng bình quân lớn nhất là "
+            f"**{last_priority}**. Sự thay đổi giữa đầu kỳ và cuối kỳ cho thấy "
+            "mô hình phân biệt đầu tư nền tảng với đầu tư khai thác thành quả."
+        )
+
+    with st.expander(
+        "c) Cú sốc 2028 có làm thay đổi chính sách tối ưu không?",
+        expanded=True,
+    ):
+        average_policy_change = float(
+            np.mean(
+                np.abs(
+                    shock_shares
+                    - optimal_shares
+                )
             )
         )
 
         st.markdown(
-            "Front-load có thể tận dụng hiệu ứng tích lũy TFP, nhưng làm giảm tiêu dùng "
-            "ở giai đoạn đầu và đòi hỏi năng lực giải ngân cao."
+            f"Cú sốc làm thay đổi tỷ trọng đầu tư bình quân tuyệt đối khoảng "
+            f"**{average_policy_change:.4f}**. Nếu thay đổi nhỏ, chính sách tương đối "
+            "ổn định; nếu thay đổi lớn, cần chuẩn bị cơ chế tái phân bổ ngân sách linh hoạt."
         )
 
     with st.expander(
-        "b) Nên đầu tư AI trước nhân lực hay đồng thời?",
+        "d) Front-load có luôn tốt hơn trải đều không?",
         expanded=True,
     ):
         st.markdown(
-            "AI có tốc độ khấu hao nhanh và phụ thuộc vào kỹ năng lao động. "
-            "Vì vậy, nên đầu tư nhân lực trước một bước hoặc đồng thời với AI. "
-            "Đầu tư AI mạnh khi năng lực hấp thụ thấp có thể tạo tài sản công nghệ "
-            "nhưng không chuyển hóa thành năng suất."
+            "Không. Front-load có thể tạo năng lực sớm và nâng sản lượng tương lai, "
+            "nhưng làm giảm tiêu dùng hiện tại. Kết luận phụ thuộc vào hệ số chiết khấu, "
+            "hiệu quả chuyển đổi đầu tư và tốc độ khấu hao của từng loại tài sản."
         )
 
     with st.expander(
-        "c) Khi ρ giảm từ 0,97 xuống 0,90, chính sách thay đổi thế nào?",
+        "e) Giới hạn lớn nhất của mô hình là gì?",
         expanded=True,
     ):
         st.markdown(
-            "ρ thấp làm lợi ích tương lai có giá trị hiện tại nhỏ hơn. "
-            "Mô hình vì vậy có xu hướng ưu tiên tiêu dùng hiện tại, giảm đầu tư "
-            "có thời gian hoàn vốn dài và có thể chuyển ngân sách từ nhân lực, "
-            "R&D hoặc nền tảng số sang vốn tạo sản lượng ngắn hạn."
+            "Mô hình sử dụng tham số giả định, chưa có chi phí điều chỉnh, độ trễ dự án, "
+            "trần hấp thụ từng năm, nợ công, phân phối thu nhập và bất định tham số. "
+            "Do đó kết quả là công cụ mô phỏng và hỗ trợ quyết định, không phải dự báo chính thức."
         )
 
 
