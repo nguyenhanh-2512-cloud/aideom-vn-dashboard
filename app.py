@@ -13079,7 +13079,7 @@ def _b12_validation(
 ):
     scenarios = pipeline[
         "scenarios"
-    ]
+    ].copy()
 
     allocation = pipeline[
         "allocation"
@@ -13419,7 +13419,167 @@ def page_12():
         "được sử dụng để so sánh kịch bản, không phải dự báo chính thức."
     )
 
+    # =====================================================
+    # 12.2. Trọng số tương tác và xếp hạng kịch bản
+    # =====================================================
     st.markdown("## 12.2. Năm kịch bản")
+
+    st.markdown("### Điều chỉnh trọng số ra quyết định")
+
+    st.caption(
+        "Người dùng có thể thay đổi mức ưu tiên giữa tăng trưởng, "
+        "việc làm, bao trùm, an ninh mạng và phát thải. "
+        "Các trọng số được tự động chuẩn hóa để có tổng bằng 1."
+    )
+
+    weight_columns = st.columns(5)
+
+    weight_gdp = weight_columns[0].slider(
+        "GDP",
+        min_value=0.00,
+        max_value=1.00,
+        value=0.35,
+        step=0.05,
+        key="b12_weight_gdp",
+    )
+
+    weight_jobs = weight_columns[1].slider(
+        "Việc làm",
+        min_value=0.00,
+        max_value=1.00,
+        value=0.20,
+        step=0.05,
+        key="b12_weight_jobs",
+    )
+
+    weight_inclusion = weight_columns[2].slider(
+        "Bao trùm",
+        min_value=0.00,
+        max_value=1.00,
+        value=0.20,
+        step=0.05,
+        key="b12_weight_inclusion",
+    )
+
+    weight_cyber = weight_columns[3].slider(
+        "Giảm cyber risk",
+        min_value=0.00,
+        max_value=1.00,
+        value=0.15,
+        step=0.05,
+        key="b12_weight_cyber",
+    )
+
+    weight_emission = weight_columns[4].slider(
+        "Giảm phát thải",
+        min_value=0.00,
+        max_value=1.00,
+        value=0.10,
+        step=0.05,
+        key="b12_weight_emission",
+    )
+
+    decision_weights = np.array(
+        [
+            weight_gdp,
+            weight_jobs,
+            weight_inclusion,
+            weight_cyber,
+            weight_emission,
+        ],
+        dtype=float,
+    )
+
+    if decision_weights.sum() <= 1e-12:
+        st.warning(
+            "Tổng trọng số đang bằng 0. Hệ thống sử dụng lại "
+            "bộ trọng số mặc định."
+        )
+
+        decision_weights = np.array(
+            [
+                0.35,
+                0.20,
+                0.20,
+                0.15,
+                0.10,
+            ],
+            dtype=float,
+        )
+
+    decision_weights = (
+        decision_weights
+        / decision_weights.sum()
+    )
+
+    scenarios["UserScore"] = (
+        decision_weights[0]
+        * scenarios["GDP_norm"]
+        + decision_weights[1]
+        * scenarios["Jobs_norm"]
+        + decision_weights[2]
+        * scenarios["Inclusion_norm"]
+        + decision_weights[3]
+        * (
+            1.0
+            - scenarios["Cyber_norm"]
+        )
+        + decision_weights[4]
+        * (
+            1.0
+            - scenarios["Emission_norm"]
+        )
+    )
+
+    scenarios["UserRank"] = (
+        scenarios["UserScore"]
+        .rank(
+            ascending=False,
+            method="min",
+        )
+        .astype(int)
+    )
+
+    scenarios = scenarios.sort_values(
+        [
+            "UserRank",
+            "IntegratedRank",
+        ]
+    ).reset_index(
+        drop=True
+    )
+
+    normalized_weights = pd.DataFrame(
+        {
+            "Tiêu chí": [
+                "GDP",
+                "Việc làm",
+                "Bao trùm",
+                "Giảm cyber risk",
+                "Giảm phát thải",
+            ],
+            "Trọng số chuẩn hóa": decision_weights,
+        }
+    )
+
+    with st.expander(
+        "Xem bộ trọng số sau chuẩn hóa",
+        expanded=False,
+    ):
+        st.dataframe(
+            normalized_weights.style.format(
+                {
+                    "Trọng số chuẩn hóa": "{:.3f}",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.success(
+            f"Tổng trọng số sau chuẩn hóa = "
+            f"{decision_weights.sum():.3f}"
+        )
     st.dataframe(
         scenarios[
             [
@@ -13435,6 +13595,8 @@ def page_12():
                 "EmissionRisk",
                 "IntegratedScore",
                 "IntegratedRank",
+                "UserScore",
+                "UserRank",
             ]
         ],
         use_container_width=True,
@@ -13450,7 +13612,7 @@ def page_12():
                 best[
                     "Kịch bản"
                 ],
-                f"Điểm={best['IntegratedScore']:.4f}",
+                f"Điểm tùy chỉnh={best['UserScore']:.4f}",
             ),
             (
                 "GDP 2030",
