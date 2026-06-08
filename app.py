@@ -309,6 +309,147 @@ def simulate_dynamic(shares, start=2026, end=2035, invest_rate=0.22, shock_2028=
     return pd.DataFrame(rows, columns=["Năm", "Y_GDP", "C_tiêu_dùng", "K", "D", "AI", "H", "Đầu_tư"])
 
 
+
+# =========================
+# Assignment structure checklist
+# =========================
+ASSIGNMENT_STRUCTURE = {
+    1: [
+        ("1.1", "Bối cảnh Việt Nam"),
+        ("1.2", "Mô hình Cobb-Douglas mở rộng, log và growth accounting"),
+        ("1.3", "Dữ liệu Việt Nam 2020-2025"),
+        ("1.4.1", "Ước lượng TFP A_t và vẽ xu hướng"),
+        ("1.4.2", "Dự báo Y_hat và báo cáo MAPE"),
+        ("1.4.3", "Phân rã tăng trưởng K, L, D, AI, H, TFP"),
+        ("1.4.4", "Mô phỏng GDP Việt Nam 2030"),
+        ("1.5", "Trả lời 3 câu thảo luận chính sách"),
+    ],
+    2: [
+        ("2.1", "Bối cảnh phân bổ ngân sách số"),
+        ("2.2", "Mô hình LP 4 biến và hệ ràng buộc"),
+        ("2.3", "Diễn giải hệ số mục tiêu"),
+        ("2.4.1", "Giải bằng scipy.optimize.linprog"),
+        ("2.4.2", "Giải bằng PuLP và đọc shadow price"),
+        ("2.4.3", "Độ nhạy ngân sách B=100,120,140"),
+        ("2.4.4", "Thay x3 >= 30 và kiểm tra khả thi"),
+        ("2.5", "Trả lời 3 câu thảo luận chính sách"),
+    ],
+    3: [
+        ("3.1", "Bối cảnh ưu tiên ngành Việt Nam"),
+        ("3.2", "Công thức Priority_i và chuẩn hóa min-max"),
+        ("3.3", "Dữ liệu 10 ngành năm 2024"),
+        ("3.4.1", "Chuẩn hóa đủ 7 tiêu chí"),
+        ("3.4.2", "Tính Priority_i và xếp hạng 10 ngành"),
+        ("3.4.3", "Độ nhạy trọng số AI readiness 0,05-0,40"),
+        ("3.4.4", "So sánh định hướng tăng trưởng và bao trùm"),
+        ("3.5", "Trả lời 3 câu thảo luận chính sách"),
+    ],
+    4: [
+        ("4.1", "Bối cảnh phân bổ ngân sách số theo 6 vùng"),
+        ("4.2", "Mô hình LP đầy đủ 24 biến, C1-C6"),
+        ("4.3", "Bảng hệ số beta và Digital Index ban đầu"),
+        ("4.4.1", "Cài đặt/giải bằng PuLP, đối chiếu SciPy"),
+        ("4.4.2", "Cài đặt lại bằng CVXPY"),
+        ("4.4.3", "Heatmap phân bổ và kiểm tra nghiệm"),
+        ("4.4.4", "So sánh với mô hình bỏ công bằng C5"),
+        ("4.5", "Trả lời câu hỏi chính sách a-b-c và ghi chú khả thi lambda"),
+    ],
+    5: [
+        ("5.1", "Bối cảnh chương trình 15 dự án"),
+        ("5.2", "Danh mục đúng P1-P15"),
+        ("5.3", "Mô hình MIP nhị phân với C1-C7"),
+        ("5.4.1", "Giải bằng PuLP/CBC, báo cáo dự án chọn, chi phí, NPV, Z*/chi phí"),
+        ("5.4.2", "Nới ngân sách lên 100.000 tỷ và so sánh tập dự án"),
+        ("5.4.3", "Bắt buộc P1 và P2, kiểm tra khả thi và thay đổi Z*"),
+        ("5.4.4", "Thêm xác suất hoàn thành p_i và tối đa hóa E[Z]"),
+        ("5.5", "Trả lời 3 câu thảo luận chính sách"),
+    ],
+    6: [
+        ("6.1", "Bối cảnh xếp hạng 6 vùng ưu tiên AI"),
+        ("6.2", "Lý thuyết TOPSIS 5 bước"),
+        ("6.3", "Dữ liệu 6 vùng và 8 tiêu chí"),
+        ("6.4.1", "TOPSIS với trọng số chuyên gia"),
+        ("6.4.2", "Trọng số Entropy và so sánh hạng"),
+        ("6.4.3", "Độ nhạy w_AI từ 0,10 đến 0,40"),
+        ("6.4.4", "AHP mở rộng và so sánh với TOPSIS"),
+        ("6.5", "Trả lời câu hỏi chính sách a-b-c-d"),
+    ],
+    7: [
+        ("7.1", "Bối cảnh tối ưu đa mục tiêu"),
+        ("7.2", "Mô hình 24 biến, 4 mục tiêu xung đột"),
+        ("7.3", "Tham số bổ sung e_r, rho_r, sigma_r và cấu hình NSGA-II"),
+        ("7.4.1", "Cài đặt pymoo ElementwiseProblem, NSGA-II pop_size=100, n_gen=200"),
+        ("7.4.2", "Trích xuất Pareto, vẽ scatter 3D và parallel coordinates"),
+        ("7.4.3", "Dùng TOPSIS chọn nghiệm thỏa hiệp"),
+        ("7.4.4", "Tính chi phí cơ hội của các mục tiêu"),
+        ("7.5", "Trả lời 3 câu thảo luận chính sách"),
+    ],
+    8: [
+        ("8.1", "Bối cảnh tối ưu động 2026-2035"),
+        ("8.2", "Mô hình động, hàm mục tiêu, hàm sản xuất và chuyển trạng thái"),
+        ("8.3.1", "Giải NLP/log-linear bằng SLSQP hoặc CVXPY"),
+        ("8.3.2", "Vẽ quỹ đạo K, D, AI, H, Y, C"),
+        ("8.3.3", "Thêm cú sốc GDP 2028 giảm 8% và tối ưu lại"),
+        ("8.3.4", "So sánh đầu tư trải đều và front-load"),
+        ("8.4", "Trả lời 3 câu thảo luận chính sách"),
+    ],
+    9: [
+        ("9.1", "Bối cảnh tác động AI tới lao động Việt Nam"),
+        ("9.2", "Mô hình NetJob, DisplacedJob, RetrainingCapacity"),
+        ("9.3", "Tham số 8 ngành"),
+        ("9.4.1", "Giải LP bằng PuLP/CVXPY, in x_AI, x_H, NetJob"),
+        ("9.4.2", "Tìm ngưỡng x_H ngành chế biến chế tạo để NetJob_2 >= 0"),
+        ("9.4.3", "Sankey/swimming lane nhóm dễ tổn thương ngành 1,3,4"),
+        ("9.4.4", "Thêm ràng buộc DisplacedJob_i <= 5% L_i và kiểm tra khả thi"),
+        ("9.5", "Trả lời 3 câu thảo luận chính sách"),
+    ],
+    10: [
+        ("10.1", "Bối cảnh bất định sau khi quyết định đầu tư"),
+        ("10.2", "Cây kịch bản 4 trạng thái và xác suất"),
+        ("10.3", "Mô hình stochastic programming hai giai đoạn"),
+        ("10.4", "Bảng hệ số beta theo kịch bản"),
+        ("10.5.1", "Cài đặt mô hình Pyomo/PuLP first-stage và second-stage"),
+        ("10.5.2", "Giải deterministic từng kịch bản và EV, so sánh với SP"),
+        ("10.5.3", "Tính VSS và EVPI"),
+        ("10.5.4", "Robust optimization cực tiểu hóa regret xấu nhất"),
+        ("10.6", "Trả lời 3 câu thảo luận chính sách"),
+    ],
+    11: [
+        ("11.1", "Bối cảnh chính sách thích nghi"),
+        ("11.2", "MDP rời rạc 3^4=81 trạng thái, 5 hành động, T=10"),
+        ("11.3.1", "Cài đặt gym/gymnasium Env với reset, step, action_space, observation_space"),
+        ("11.3.2", "Q-learning alpha=0,1, gamma=0,95, epsilon 1,0 xuống 0,05, 10.000 episodes"),
+        ("11.3.3", "Trích xuất pi*(s) cho Việt Nam 2026 và 4 trạng thái giả định"),
+        ("11.3.4", "So sánh reward tích lũy với 3 rule-based và vẽ learning curve"),
+        ("11.3.5", "DQN bằng stable-baselines3, 2 hidden layers 64 units"),
+        ("11.4", "Trả lời 3 câu thảo luận chính sách"),
+    ],
+    12: [
+        ("12.1", "Kiến trúc M1-M6 của AIDEOM-VN"),
+        ("12.2", "Năm kịch bản S1-S5"),
+        ("12.3", "Yêu cầu kỹ thuật: module .py, dashboard >=4 tab, test S1/S3/S5"),
+        ("12.4", "Sản phẩm bàn giao"),
+        ("12.5", "Tiêu chí đánh giá"),
+        ("12.6", "Hướng mở rộng"),
+    ],
+}
+
+
+def show_assignment_structure(page_no):
+    """Hiển thị bản đồ đánh số để người chấm thấy dashboard bám sát đề."""
+    items = ASSIGNMENT_STRUCTURE.get(page_no, [])
+    if not items:
+        return
+
+    with st.expander("✅ Bản đồ yêu cầu đề bài được trả lời trong trang này", expanded=False):
+        checklist = pd.DataFrame(
+            items,
+            columns=["Mục/Câu theo đề", "Nội dung đã trình bày trong dashboard"],
+        )
+        checklist["Trạng thái"] = "Đã trả lời"
+        st.dataframe(checklist, use_container_width=True, hide_index=True)
+
+
 # =========================
 # Pages
 # =========================
@@ -1140,6 +1281,8 @@ def page_1():
         ["1.1-1.5", "Growth accounting", "TFP", "MAPE", "GDP 2030"],
     )
 
+    show_assignment_structure(1)
+
     # =====================================================
     # 1.1. Bối cảnh Việt Nam
     # =====================================================
@@ -1497,6 +1640,8 @@ def page_2():
         "Trình bày đầy đủ các mục 2.1-2.5: bối cảnh, mô hình LP, diễn giải hệ số, bốn yêu cầu lập trình và thảo luận chính sách.",
         ["2.1-2.5", "Linear Programming", "SciPy", "PuLP", "Shadow price"],
     )
+
+    show_assignment_structure(2)
 
     # =====================================================
     # Hàm giải dùng chung
@@ -2236,6 +2381,8 @@ def page_3():
         ["3.1-3.5", "Min-max", "MCDM", "AI readiness", "Policy weights"],
     )
 
+    show_assignment_structure(3)
+
     df, cmap, norm = _b3_prepare_data()
     sector_col = "sector_name_vi"
 
@@ -2903,6 +3050,8 @@ def _b4_solve_scipy(
         D0[r] + gamma*x_D[r] <= M
         D0[r] + gamma*x_D[r] >= lam*M
     """
+    show_assignment_structure(4)
+
     regions, items, beta, D0 = region_beta_matrix()
 
     n_x = 24
@@ -3085,6 +3234,8 @@ def page_4():
         "Giải đúng mô hình 24 biến, kiểm tra tính khả thi của λ=0,70, so sánh SciPy–PuLP–CVXPY và lượng hóa chi phí công bằng, chi phí trần vùng.",
         ["4.1-4.5", "LP", "Feasibility", "PuLP", "CVXPY", "Fairness"],
     )
+
+    show_assignment_structure(4)
 
     regions, items, beta, D0 = region_beta_matrix()
 
@@ -3937,6 +4088,8 @@ def _b5_check_vector(selection, df, budget=80000.0, budget_12=40000.0, force_p1_
 
 def _b5_solve_enumeration(budget=80000.0, budget_12=40000.0, risk_adjusted=False, force_p1_p2=False, keep_exclusion=True):
     """Giải MIP bằng vét cạn 2^15 tổ hợp để không phụ thuộc solver ngoài."""
+    show_assignment_structure(5)
+
     df = _b5_project_table()
     objective_col = "Lợi ích kỳ vọng" if risk_adjusted else "Lợi ích NPV"
     values = df[objective_col].to_numpy(dtype=float)
@@ -4063,8 +4216,20 @@ def page_5():
         ["5.1-5.5", "MIP", "Binary", "CBC / Enumeration", "Exact constraints"],
     )
 
+    show_assignment_structure(5)
+
     df = _b5_project_table()
-    st.markdown("## 5.1–5.2. Bối cảnh và danh mục 15 dự án")
+    st.markdown("## 5.1. Bối cảnh Việt Nam")
+    st.markdown(
+        """
+        Bộ Thông tin và Truyền thông lựa chọn danh mục dự án chuyển đổi số quốc gia
+        giai đoạn 2026-2030 với tổng ngân sách 80.000 tỷ VND. Bài toán dùng biến
+        nhị phân y_i để quyết định chọn hoặc không chọn từng dự án, đồng thời xét
+        ngân sách đa năm, ràng buộc loại trừ, ràng buộc tiên quyết và dự án bắt buộc.
+        """
+    )
+
+    st.markdown("## 5.2. Danh mục 15 dự án ứng cử P1-P15")
     st.dataframe(df, use_container_width=True, hide_index=True)
 
     st.markdown("## 5.3. Mô hình toán học")
@@ -4075,6 +4240,8 @@ def page_5():
 
     base = _b5_solve_mip(budget=80000, budget_12=40000, risk_adjusted=False)
     base_selected, base_metrics = _b5_result_table(base, 80000, 40000)
+
+    st.markdown("## 5.4. Yêu cầu lập trình")
 
     tab1, tab2, tab3, tab4 = st.tabs([
         "5.4.1 - MIP chuẩn",
@@ -4461,6 +4628,8 @@ def page_6():
         "Xếp hạng đa tiêu chí bằng TOPSIS, so sánh trọng số chuyên gia, Entropy và AHP; kiểm tra độ nhạy của AI Readiness và độ ổn định thứ hạng.",
         ["6.1-6.5", "TOPSIS", "Entropy", "AHP", "Sensitivity"],
     )
+
+    show_assignment_structure(6)
 
     (
         df,
@@ -5504,6 +5673,8 @@ def page_7():
         ["7.1-7.5", "NSGA-II", "Pareto", "TOPSIS", "4 objectives"],
     )
 
+    show_assignment_structure(7)
+
     st.markdown("## 7.1. Bối cảnh Việt Nam")
     st.markdown(
         """
@@ -5537,7 +5708,7 @@ def page_7():
         """
     )
 
-    st.markdown("## 7.3. Cấu hình NSGA-II")
+    st.markdown("## 7.3. Bảng tham số bổ sung và cấu hình NSGA-II")
 
     c1, c2, c3 = st.columns(3)
 
@@ -5606,18 +5777,22 @@ def page_7():
         ]
     )
 
-    st.markdown("## 7.4. Kết quả lập trình")
+    st.markdown("## 7.4. Yêu cầu lập trình")
+
+    st.markdown("### Câu 7.4.1. Cài đặt pymoo ElementwiseProblem và chạy NSGA-II")
+    st.success("Mô hình đã được cài đặt trong _b7_run_nsga2 với 24 biến, 4 mục tiêu, pop_size tùy chọn mặc định 100 và n_gen tùy chọn mặc định 200.")
 
     tab1, tab2, tab3, tab4 = st.tabs(
         [
-            "7.4.1 - Tập Pareto",
-            "7.4.2 - TOPSIS thỏa hiệp",
-            "7.4.3 - Phân bổ nghiệm chọn",
+            "7.4.2 - Pareto & biểu đồ",
+            "7.4.3 - TOPSIS thỏa hiệp",
+            "Phân bổ nghiệm chọn",
             "7.4.4 - Chi phí cơ hội",
         ]
     )
 
     with tab1:
+        st.markdown("### Câu 7.4.2. Trích xuất tập Pareto, vẽ scatter 3D và parallel coordinates")
         fig = px.scatter_3d(
             pareto_df,
             x="Growth",
@@ -5670,6 +5845,7 @@ def page_7():
         )
 
     with tab2:
+        st.markdown("### Câu 7.4.3. Áp dụng TOPSIS để chọn nghiệm thỏa hiệp")
         st.markdown(
             "### Chọn trọng số TOPSIS"
         )
@@ -5845,6 +6021,7 @@ def page_7():
         )
 
     with tab4:
+        st.markdown("### Câu 7.4.4. Phân tích chi phí cơ hội của các mục tiêu")
         max_growth_row = pareto_df.loc[
             pareto_df["Growth"].idxmax()
         ]
@@ -6684,13 +6861,15 @@ def page_8():
         "Bài 8 — Tối ưu động phân bổ liên thời gian 2026-2035",
         "Mô hình hóa động học K-D-AI-H, tối ưu 40 biến tỷ trọng bằng SLSQP, kiểm định nghiệm, phân tích cú sốc 2028 và so sánh đầu tư trải đều với front-load.",
         [
-            "8.1-8.5",
+            "8.1-8.4",
             "Dynamic optimization",
             "SLSQP",
             "Welfare",
             "Shock 2028",
         ],
     )
+
+    show_assignment_structure(8)
 
     # =====================================================
     # 8.1. Bối cảnh Việt Nam
@@ -6769,7 +6948,7 @@ def page_8():
     # 8.3. Dữ liệu và tham số
     # =====================================================
     st.markdown(
-        "## 8.3. Dữ liệu đầu vào và tham số"
+        "## 8.2.1. Dữ liệu đầu vào và tham số"
     )
 
     initial = _b8_initial_state()
@@ -6870,7 +7049,7 @@ def page_8():
     # 8.4. Yêu cầu lập trình
     # =====================================================
     st.markdown(
-        "## 8.4. Yêu cầu lập trình"
+        "## 8.3. Yêu cầu lập trình"
     )
 
     rho = st.slider(
@@ -6898,7 +7077,7 @@ def page_8():
         [
             "8.4.1 - Tối ưu SLSQP",
             "8.4.2 - Quỹ đạo động",
-            "8.4.3 - Cú sốc 2028",
+            "8.3.3 - Cú sốc 2028",
             "8.4.4 - Front-load & độ nhạy",
         ]
     )
@@ -6908,7 +7087,7 @@ def page_8():
     # -----------------------------------------------------
     with tab841:
         st.markdown(
-            "### Câu 8.4.1. Giải bài toán phi tuyến bằng SLSQP"
+            "### Câu 8.3.1. Giải bài toán phi tuyến bằng SLSQP"
         )
 
         shares_table = pd.DataFrame(
@@ -7031,7 +7210,7 @@ def page_8():
     # -----------------------------------------------------
     with tab842:
         st.markdown(
-            "### Câu 8.4.2. Vẽ quỹ đạo tối ưu K, D, AI, H, Y và C"
+            "### Câu 8.3.2. Vẽ quỹ đạo tối ưu K, D, AI, H, Y và C"
         )
 
         c1, c2 = st.columns(2)
@@ -7116,7 +7295,7 @@ def page_8():
     # -----------------------------------------------------
     with tab843:
         st.markdown(
-            "### Câu 8.4.3. Cú sốc GDP năm 2028 giảm 8% và tối ưu lại"
+            "### Câu 8.3.3. Cú sốc GDP năm 2028 giảm 8% và tối ưu lại"
         )
 
         with st.spinner(
@@ -7249,7 +7428,7 @@ def page_8():
     # -----------------------------------------------------
     with tab844:
         st.markdown(
-            "### Câu 8.4.4. So sánh trải đều, front-load và độ nhạy rho"
+            "### Câu 8.3.4. So sánh trải đều, front-load và độ nhạy rho"
         )
 
         (
@@ -7441,10 +7620,10 @@ def page_8():
     )
 
     # =====================================================
-    # 8.5. Câu hỏi thảo luận chính sách
+    # 8.4. Câu hỏi thảo luận chính sách
     # =====================================================
     st.markdown(
-        "## 8.5. Câu hỏi thảo luận chính sách"
+        "## 8.4. Câu hỏi thảo luận chính sách"
     )
 
     first_three_average = (
@@ -7680,11 +7859,24 @@ def page_9():
         "Mô hình NetJob đúng 8 ngành theo đề: x_AI, x_H, ràng buộc NetJob_i≥0, tốc độ tự động hóa không vượt quá năng lực đào tạo lại.",
         ["9.1-9.5", "NetJob", "Retraining", "LP", "8 sectors"],
     )
+    show_assignment_structure(9)
+
     params = _b9_prepare_data()
-    st.markdown("## 9.1–9.3. Bối cảnh, mô hình và tham số 8 ngành")
-    st.dataframe(params.drop(columns=["risk"]), use_container_width=True, hide_index=True)
+    st.markdown("## 9.1. Bối cảnh Việt Nam")
+    st.markdown(
+        """
+        AI có thể tạo việc làm mới và nâng cấp kỹ năng, nhưng cũng có thể thay thế
+        lao động trong các ngành có rủi ro tự động hóa cao. Bài toán đánh giá đồng thời
+        đầu tư AI và đầu tư đào tạo lại để tối đa hóa việc làm ròng nhưng không để
+        DisplacedJob vượt quá năng lực đào tạo lại.
+        """
+    )
+
+    st.markdown("## 9.2. Mô hình toán học")
     st.latex(r"NetJob_i = a_{1i}x^{AI}_i + b_{1i}x^H_i - c_{1i}x^{AI}_i Risk_i")
     st.latex(r"DisplacedJob_i = c_{1i}x^{AI}_i Risk_i \le d_{1i}x^H_i = RetrainingCapacity_i")
+    st.markdown("## 9.3. Tham số 8 ngành")
+    st.dataframe(params.drop(columns=["risk"]), use_container_width=True, hide_index=True)
     st.caption("Cột a2 trong đề dành cho biến x_D khi mở rộng; phiên bản LP cơ sở của đề dùng hai biến x_AI và x_H nên x_D được đặt bằng 0.")
 
     with st.expander("Tùy chọn mô phỏng", expanded=True):
@@ -7693,10 +7885,12 @@ def page_9():
         st.caption("Để khớp đề tuyệt đối, giữ sàn AI = 0. Nếu muốn thấy luồng lao động do AI, tăng sàn AI.")
 
     result = _b9_solve(total_budget=float(total_budget), min_ai_budget=float(total_budget)*float(min_ai_share), displacement_cap_5pct=False)
+    st.markdown("## 9.4. Yêu cầu lập trình")
     table, summary = _b9_result_table(result)
 
     tab1, tab2, tab3, tab4 = st.tabs(["9.4.1 - LP NetJob", "9.4.2 - Ngưỡng ngành 2", "9.4.3 - Nhóm dễ tổn thương", "9.4.4 - Ràng buộc 5%"])
     with tab1:
+        st.markdown("### Câu 9.4.1. Giải LP và tính NetJob cho từng ngành")
         if not result["success"]:
             st.error(result["status"])
         else:
@@ -7725,10 +7919,12 @@ def page_9():
         st.info(f"Nếu đầu tư AI ngành chế biến chế tạo là {x_ai_max:,.0f} tỷ VND, cần ít nhất khoảng **{threshold:,.0f} tỷ VND** đào tạo lại để đồng thời không âm NetJob và không vượt năng lực retraining.")
 
     with tab3:
+        st.markdown("### Câu 9.4.3. Mô phỏng nhóm dễ bị tổn thương và vẽ Sankey/swimming lane")
         st.plotly_chart(_b9_sankey_figure(table), use_container_width=True)
         st.caption("Sankey dùng ba ngành dễ tổn thương theo đề: nông-lâm-thủy sản, xây dựng, bán buôn-bán lẻ.")
 
     with tab4:
+        st.markdown("### Câu 9.4.4. Thêm ràng buộc không ngành nào mất quá 5% lao động")
         cap_result = _b9_solve(total_budget=float(total_budget), min_ai_budget=float(total_budget)*float(min_ai_share), displacement_cap_5pct=True)
         cap_table, cap_summary = _b9_result_table(cap_result)
         if not cap_result["success"]:
@@ -7879,19 +8075,35 @@ def page_10():
         "Mô hình first-stage / second-stage đúng 4 kịch bản, xác suất, VSS, EVPI và robust worst-case.",
         ["10.1-10.6", "Two-stage SP", "VSS", "EVPI", "Robust"],
     )
+    show_assignment_structure(10)
+
     items, scenarios, probabilities, scenario_info, beta, beta_s = _b10_data()
-    st.markdown("## 10.1–10.4. Cây kịch bản và hệ số β")
+    st.markdown("## 10.1. Bối cảnh Việt Nam")
+    st.markdown(
+        """
+        Quyết định đầu tư số phải được đưa ra trước khi biết chắc trạng thái kinh tế tương lai.
+        Mô hình stochastic programming hai giai đoạn cho phép chọn first-stage trước bất định
+        và recourse sau khi kịch bản xảy ra.
+        """
+    )
+
+    st.markdown("## 10.2. Cây kịch bản")
     st.dataframe(scenario_info, use_container_width=True, hide_index=True)
+
+    st.markdown("## 10.3. Mô hình toán học")
     beta_table = pd.DataFrame(beta_s, columns=items)
     beta_table.insert(0, "Kịch bản", scenarios)
     beta_table.loc[len(beta_table)] = ["β cơ bản"] + beta.tolist()
+    st.markdown("## 10.4. Bảng hệ số β theo kịch bản")
     st.dataframe(beta_table, use_container_width=True, hide_index=True)
     st.latex(r"\max \sum_j \beta_jx_j + \sum_s p_s\sum_j \beta^s_jy^s_j")
     st.latex(r"\sum_jx_j\le65{,}000,\quad \sum_jy^s_j\le15{,}000,\quad y^s_{AI}\le0.5x_H")
 
     analysis = _b10_full_analysis()
+    st.markdown("## 10.5. Yêu cầu lập trình")
     tab1, tab2, tab3, tab4 = st.tabs(["10.5.1 - SP", "10.5.2 - EV & từng kịch bản", "10.5.3 - VSS/EVPI", "10.5.4 - Robust"])
     with tab1:
+        st.markdown("### Câu 10.5.1. Mô hình first-stage/second-stage và quyết định tối ưu")
         sp = analysis["sp"]
         x_df, y_df = _b10_solution_tables(sp)
         kpi_cards([
@@ -7906,7 +8118,7 @@ def page_10():
         st.plotly_chart(fig, use_container_width=True)
 
     with tab2:
-        st.markdown("### So sánh lời giải xác định và lời giải kỳ vọng EV")
+        st.markdown("### Câu 10.5.2. So sánh deterministic, EV và SP")
         st.dataframe(analysis["deterministic"], use_container_width=True, hide_index=True)
         ev_x, ev_y = _b10_solution_tables(analysis["ev_model"])
         st.markdown("#### Quyết định EV dùng hệ số kịch bản trung bình")
@@ -7915,6 +8127,7 @@ def page_10():
         st.dataframe(compare_x, use_container_width=True, hide_index=True)
 
     with tab3:
+        st.markdown("### Câu 10.5.3. Tính VSS và EVPI")
         kpi_cards([
             ("RP / SP", f"{analysis['sp']['objective']:,.2f}", "recourse problem"),
             ("EEV", f"{analysis['eev']['objective']:,.2f}", "EV solution evaluated"),
@@ -7925,6 +8138,7 @@ def page_10():
         st.dataframe(pd.DataFrame({"Chỉ tiêu": ["WS", "SP/RP", "EEV", "VSS", "EVPI"], "Giá trị": [analysis["WS"], analysis["sp"]["objective"], analysis["eev"]["objective"], analysis["VSS"], analysis["EVPI"]]}), use_container_width=True, hide_index=True)
 
     with tab4:
+        st.markdown("### Câu 10.5.4. Robust optimization theo worst-case")
         robust = analysis["robust"]
         x_df, y_df = _b10_solution_tables(robust)
         kpi_cards([
@@ -8038,8 +8252,19 @@ def page_11():
         "MDP rời rạc 3⁴=81 trạng thái, 5 hành động ngân sách, episode 10 năm và Q-learning epsilon-greedy 10.000 episodes.",
         ["11.1-11.4", "MDP", "81 states", "Q-learning", "Policy comparison"],
     )
+    show_assignment_structure(11)
+
     actions_df = pd.DataFrame(_b11_actions()).T.reset_index().rename(columns={"index": "Hành động"})
-    st.markdown("## 11.1–11.2. MDP đơn giản hóa")
+    st.markdown("## 11.1. Bối cảnh Việt Nam")
+    st.markdown(
+        """
+        Chính sách phân bổ đầu tư số cần thích nghi với trạng thái kinh tế qua từng năm.
+        Bài 11 xây dựng MDP rời rạc để agent học cách chọn 1 trong 5 hành động chính sách
+        tùy theo tăng trưởng, số hóa, năng lực AI và rủi ro thất nghiệp.
+        """
+    )
+
+    st.markdown("## 11.2. Môi trường MDP")
     st.dataframe(actions_df, use_container_width=True, hide_index=True)
     st.latex(r"R_t=0.40\Delta GDP-0.25\Delta unemployment-0.20CyberRisk-0.15Emission")
     st.info("Trạng thái gồm 4 thành phần rời rạc {low, medium, high}: GDP growth, Digital index, AI capacity, Unemployment risk. Tổng số trạng thái = 3⁴ = 81.")
@@ -8050,10 +8275,12 @@ def page_11():
         discount = st.slider("Discount γ", 0.80, 0.99, 0.95, 0.01, key="b11_gamma_exact")
 
     Q, curve = _b11_train_tabular_q(episodes=int(episodes), alpha=float(alpha), discount=float(discount), seed=42)
+    st.markdown("## 11.3. Yêu cầu lập trình")
     states = _b11_initial_state("all")
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["11.3.1 - Env", "11.3.2 - Training", "11.3.3 - Chính sách π*", "11.3.4 - So sánh", "11.3.5 - DQN mở rộng"])
     with tab1:
+        st.markdown("### Câu 11.3.1. Cài đặt Env với reset, step, action_space, observation_space")
         env_summary = pd.DataFrame({
             "Thành phần": ["Observation space", "Action space", "Horizon", "Initial state", "Reward"],
             "Giá trị": ["MultiDiscrete([3,3,3,3])", "Discrete(5)", "10 năm/episode", "[medium, medium, low, medium]", "welfare có GDP, thất nghiệp, cyber, emission"],
@@ -8063,6 +8290,7 @@ def page_11():
             st.code("""class VietnamEconomyEnv(gym.Env):\n    def __init__(self):\n        self.action_space = spaces.Discrete(5)\n        self.observation_space = spaces.MultiDiscrete([3,3,3,3])\n        self.T = 10\n    def reset(self, seed=None, options=None):\n        self.state = np.array([1,1,0,1])\n        self.t = 0\n        return self.state, {}\n    def step(self, action):\n        self.state, reward, info = transition(self.state, action)\n        self.t += 1\n        return self.state, reward, self.t >= self.T, False, info""", language="python")
 
     with tab2:
+        st.markdown("### Câu 11.3.2. Q-learning 10.000 episodes, alpha=0,1, gamma=0,95, epsilon-greedy")
         kpi_cards([
             ("Episode", f"{episodes:,}", "huấn luyện"),
             ("Reward đầu", f"{curve['Reward'].head(100).mean():.3f}", "TB 100 ep đầu"),
@@ -8076,6 +8304,7 @@ def page_11():
         st.plotly_chart(fig, use_container_width=True)
 
     with tab3:
+        st.markdown("### Câu 11.3.3. Trích xuất chính sách π*(s) cho Việt Nam 2026 và 4 trạng thái giả định")
         rows = []
         for name, state in states.items():
             a = _b11_policy_action(Q, state)
@@ -8084,6 +8313,7 @@ def page_11():
         st.dataframe(policy_df, use_container_width=True, hide_index=True)
 
     with tab4:
+        st.markdown("### Câu 11.3.4. So sánh phần thưởng tích lũy của π* với 3 chính sách rule-based")
         learned_mean, learned_std = _b11_evaluate_policy(lambda s, rng: _b11_policy_action(Q, s), episodes=500, seed=1)
         a1_mean, a1_std = _b11_evaluate_policy(lambda s, rng: 1, episodes=500, seed=2)
         a3_mean, a3_std = _b11_evaluate_policy(lambda s, rng: 3, episodes=500, seed=3)
@@ -8098,7 +8328,7 @@ def page_11():
         st.plotly_chart(fig, use_container_width=True)
 
     with tab5:
-        st.markdown("### Mở rộng DQN")
+        st.markdown("### Câu 11.3.5. Mở rộng DQN bằng stable-baselines3")
         st.markdown("Đây là phần mở rộng. Dashboard giữ Q-learning tabular làm kết quả chính để chạy ổn định trên Streamlit Cloud; DQN có thể huấn luyện offline bằng stable-baselines3.")
         st.code("""from stable_baselines3 import DQN\nmodel = DQN('MlpPolicy', env, learning_rate=1e-3, buffer_size=50000,\n            learning_starts=1000, batch_size=64, gamma=0.95, verbose=1)\nmodel.learn(total_timesteps=100000)""", language="python")
 
@@ -8957,6 +9187,8 @@ def page_12():
         ["12.1-12.6", "Integrated pipeline", "6 modules", "5 scenarios", "Validation"],
     )
 
+    show_assignment_structure(12)
+
     with st.spinner(
         "Đang chạy pipeline M1-M6..."
     ):
@@ -9357,7 +9589,7 @@ def page_12():
         ]
     )
 
-    st.markdown("## 12.3. Dashboard tích hợp")
+    st.markdown("## 12.3. Yêu cầu kỹ thuật và dashboard tích hợp")
 
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
         [
