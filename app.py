@@ -1,5 +1,7 @@
 
 import itertools
+import os
+import json
 import base64
 from pathlib import Path
 
@@ -710,6 +712,243 @@ def _aideom_plotly_chart(fig, *args, **kwargs):
 st.dataframe = _aideom_dataframe
 st.plotly_chart = _aideom_plotly_chart
 
+
+# =========================
+# AI analysis helper
+# =========================
+def _get_gemini_api_key():
+    """Lấy Gemini API key từ Streamlit secrets hoặc biến môi trường."""
+    try:
+        key = st.secrets.get("GEMINI_API_KEY", "")
+        if key:
+            return str(key).strip()
+    except Exception:
+        pass
+    return os.getenv("GEMINI_API_KEY", "").strip()
+
+
+def _safe_for_ai(value, depth=0):
+    """Chuyển dữ liệu kết quả sang dạng gọn để gửi cho Gemini."""
+    if depth > 3:
+        return str(value)[:300]
+
+    if value is None:
+        return None
+
+    if isinstance(value, (str, int, float, bool)):
+        return value
+
+    if isinstance(value, (np.integer, np.floating, np.bool_)):
+        return value.item()
+
+    if isinstance(value, pd.DataFrame):
+        compact = value.copy()
+        if len(compact) > 12:
+            compact = compact.head(12)
+        return {
+            "type": "DataFrame",
+            "shape": list(value.shape),
+            "columns": [str(c) for c in value.columns[:20]],
+            "sample_rows": compact.astype(object).where(pd.notna(compact), None).to_dict(orient="records"),
+        }
+
+    if isinstance(value, pd.Series):
+        series = value.dropna()
+        return {
+            "type": "Series",
+            "name": str(value.name),
+            "length": int(len(value)),
+            "sample": series.head(12).tolist(),
+        }
+
+    if isinstance(value, np.ndarray):
+        arr = np.asarray(value)
+        if arr.size <= 40:
+            return arr.tolist()
+        try:
+            numeric = arr.astype(float)
+            return {
+                "shape": list(arr.shape),
+                "min": float(np.nanmin(numeric)),
+                "max": float(np.nanmax(numeric)),
+                "mean": float(np.nanmean(numeric)),
+                "sample": arr.flatten()[:20].tolist(),
+            }
+        except Exception:
+            return {
+                "shape": list(arr.shape),
+                "sample": arr.flatten()[:20].astype(str).tolist(),
+            }
+
+    if isinstance(value, dict):
+        out = {}
+        for idx, (k, v) in enumerate(value.items()):
+            if idx >= 20:
+                out["..."] = "Đã rút gọn"
+                break
+            out[str(k)] = _safe_for_ai(v, depth + 1)
+        return out
+
+    if isinstance(value, (list, tuple, set)):
+        values = list(value)
+        return [_safe_for_ai(v, depth + 1) for v in values[:20]]
+
+    return None
+
+
+def _collect_ai_context(local_vars, max_items=28):
+    """Lấy các biến kết quả quan trọng trong từng page để AI phân tích."""
+    skip_names = {
+        "st", "pd", "np", "px", "go", "linprog", "itertools",
+        "Path", "base64", "json", "os",
+    }
+    important_keywords = (
+        "result", "results", "table", "df", "score", "scores", "rank", "ranking",
+        "selected", "metrics", "scenario", "scenarios", "allocation", "comparison",
+        "forecast", "sensitivity", "kpi", "validation", "warning", "risk", "job",
+        "topsis", "entropy", "pareto", "policy", "reward", "welfare", "budget",
+        "x_", "y_", "z_", "mape", "tfp", "gdp", "net", "cost", "benefit",
+    )
+    context = {}
+    for name, value in local_vars.items():
+        lname = str(name).lower()
+        if name in skip_names or lname.startswith("_"):
+            continue
+        if callable(value):
+            continue
+        if not any(key in lname for key in important_keywords):
+            if not isinstance(value, (pd.DataFrame, pd.Series, np.ndarray, dict, list, tuple, int, float, str, bool)):
+                continue
+        safe_value = _safe_for_ai(value)
+        if safe_value is None:
+            continue
+        context[name] = safe_value
+        if len(context) >= max_items:
+            break
+    return context
+
+
+def _ai_make_prompt(lesson_name, model_name, input_params, result_data):
+    """Tạo prompt phân tích cho Gemini."""
+    payload = {
+        "lesson_name": lesson_name,
+        "model_name": model_name,
+        "input_params": input_params or {},
+        "result_data": result_data or {},
+    }
+    try:
+        payload_text = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+    except Exception:
+        payload_text = str(payload)
+    if len(payload_text) > 14000:
+        payload_text = payload_text[:14000] + "\n... [Dữ liệu đã được rút gọn để không vượt giới hạn prompt]"
+
+    return f"""
+Bạn là tác nhân AI phân tích kết quả cho web app AIDEOM-VN: AI-Driven Decision Optimization Model for Vietnam.
+
+Tên bài: {lesson_name}
+Mô hình/kỹ thuật: {model_name}
+
+DỮ LIỆU VÀ KẾT QUẢ TỪ DASHBOARD:
+{payload_text}
+
+Hãy viết phân tích bằng tiếng Việt, đúng văn phong báo cáo cuối kỳ, theo cấu trúc:
+
+1. Tóm tắt kết quả chính
+2. Ý nghĩa kinh tế/chính sách trong bối cảnh Việt Nam
+3. Điểm mạnh của kết quả hoặc phương án
+4. Rủi ro/hạn chế cần lưu ý
+5. Khuyến nghị chính sách ngắn gọn
+
+Yêu cầu bắt buộc:
+- Chỉ phân tích dựa trên dữ liệu được cung cấp trong prompt.
+- Không bịa thêm số liệu, nguồn hoặc văn bản pháp lý.
+- Nếu thiếu dữ liệu, nói rõ dữ liệu nào cần bổ sung.
+- Viết khoảng 300-500 từ.
+""".strip()
+
+
+def analyze_with_gemini(lesson_name, model_name, input_params=None, result_data=None):
+    """Gọi Gemini API để phân tích kết quả. Dùng chung cho 12 bài."""
+    api_key = _get_gemini_api_key()
+    if not api_key:
+        return None, "missing_key"
+
+    try:
+        from google import genai
+    except Exception as exc:
+        return (
+            "❌ Chưa cài thư viện `google-genai`. Hãy chạy `pip install -r requirements.txt`.\n\n"
+            f"Chi tiết lỗi: {exc}",
+            "import_error",
+        )
+
+    prompt = _ai_make_prompt(
+        lesson_name=lesson_name,
+        model_name=model_name,
+        input_params=input_params,
+        result_data=result_data,
+    )
+
+    try:
+        client = genai.Client(api_key=api_key)
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+            )
+        except Exception:
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+            )
+        return response.text, "ok"
+    except Exception as exc:
+        return f"❌ Lỗi khi gọi Gemini API: {exc}", "api_error"
+
+
+def ai_analysis_panel(lesson_name, model_name, input_params=None, result_data=None, key="ai_panel"):
+    """Hiển thị tác nhân AI phân tích kết quả ở cuối từng bài."""
+    st.markdown("---")
+    st.markdown("## 🤖 Tác nhân AI phân tích kết quả")
+    st.caption(
+        "Khối này dùng chung Gemini API miễn phí để phân tích kết quả sau khi người dùng chỉnh tham số và chạy mô hình."
+    )
+
+    with st.expander("Cấu hình Gemini API key", expanded=False):
+        st.markdown(
+            "Tạo file `.streamlit/secrets.toml` trong thư mục web và thêm:"
+        )
+        st.code('GEMINI_API_KEY = "DAN_API_KEY_CUA_BAN_VAO_DAY"', language="toml")
+        st.markdown(
+            "Hoặc đặt biến môi trường `GEMINI_API_KEY`. Không đưa API key thật lên GitHub."
+        )
+
+    if not _get_gemini_api_key():
+        st.warning(
+            "Chưa có GEMINI_API_KEY nên tác nhân AI chưa chạy. Sau khi thêm key, bấm nút bên dưới để Gemini phân tích kết quả."
+        )
+
+    button_key = f"{key}_button"
+    output_key = f"{key}_output"
+    status_key = f"{key}_status"
+
+    if st.button("Phân tích kết quả bằng Gemini", key=button_key):
+        with st.spinner("Gemini đang phân tích kết quả của bài này..."):
+            text, status = analyze_with_gemini(
+                lesson_name=lesson_name,
+                model_name=model_name,
+                input_params=input_params or {},
+                result_data=result_data or {},
+            )
+            st.session_state[output_key] = text
+            st.session_state[status_key] = status
+
+    if output_key in st.session_state and st.session_state[output_key]:
+        st.markdown("### Kết quả phân tích AI")
+        st.markdown(st.session_state[output_key])
+    elif st.session_state.get(status_key) == "missing_key":
+        st.info("Đã nhận yêu cầu, nhưng cần cấu hình GEMINI_API_KEY trước.")
 
 # =========================
 # Data and helpers
@@ -2234,6 +2473,15 @@ Y2030 = A2030 * K2030**alpha * L2030**beta * D2030**gamma * AI2030**delta * H203
         )
 
 
+    ai_analysis_panel(
+        lesson_name='Bài 1 - Cobb-Douglas mở rộng với AI và số hóa',
+        model_name='Cobb-Douglas + TFP + Growth Accounting',
+        input_params={"lesson": 'Bài 1 - Cobb-Douglas mở rộng với AI và số hóa', "model": 'Cobb-Douglas + TFP + Growth Accounting'},
+        result_data=_collect_ai_context(locals()),
+        key="ai_bai_1",
+    )
+
+
 def page_2():
     hero(
         "Bài 2 — Phân bổ ngân sách đơn giản theo 4 hạng mục đầu tư số",
@@ -2905,6 +3153,15 @@ print(res_priority_H.x)""",
             "giám sát hiệu quả đầu tư. Vì vậy cần bổ sung các ràng buộc về trần giải ngân, tiến độ, "
             "rủi ro và năng lực hấp thụ."
         )
+
+
+    ai_analysis_panel(
+        lesson_name='Bài 2 - LP phân bổ ngân sách số',
+        model_name='Linear Programming + SciPy/PuLP + Shadow Price',
+        input_params={"lesson": 'Bài 2 - LP phân bổ ngân sách số', "model": 'Linear Programming + SciPy/PuLP + Shadow Price'},
+        result_data=_collect_ai_context(locals()),
+        key="ai_bai_2",
+    )
 
 
 def _b3_column_map(df):
@@ -3629,6 +3886,15 @@ priority = (
             "cơ quan hoạch định chính sách xác định mục tiêu phát triển và giới hạn ngân sách; "
             "tham vấn công khai giúp tăng tính minh bạch, trách nhiệm giải trình và tính chính danh."
         )
+
+
+    ai_analysis_panel(
+        lesson_name='Bài 3 - Priority cho 10 ngành Việt Nam',
+        model_name='Min-max normalization + Weighted MCDM',
+        input_params={"lesson": 'Bài 3 - Priority cho 10 ngành Việt Nam', "model": 'Min-max normalization + Weighted MCDM'},
+        result_data=_collect_ai_context(locals()),
+        key="ai_bai_3",
+    )
 
 def _b4_solve_scipy(
     fairness=True,
@@ -4621,6 +4887,15 @@ def page_4():
         )
 
 
+    ai_analysis_panel(
+        lesson_name='Bài 4 - LP phân bổ ngân sách số theo vùng',
+        model_name='Regional Linear Programming + Fairness Constraint',
+        input_params={"lesson": 'Bài 4 - LP phân bổ ngân sách số theo vùng', "model": 'Regional Linear Programming + Fairness Constraint'},
+        result_data=_collect_ai_context(locals()),
+        key="ai_bai_4",
+    )
+
+
 def _b5_project_table():
     """Danh mục 15 dự án đúng theo đề Bài 5."""
     rows = [
@@ -4935,6 +5210,15 @@ def page_5():
         st.markdown("Ràng buộc P14 phản ánh an ninh mạng là điều kiện nền cho mọi hạ tầng số. Nó có thể làm giảm Z* nếu P14 không nằm trong danh mục tối ưu tự do, nhưng hợp lý về quản trị rủi ro hệ thống.")
     with st.expander("c) Mô hình hóa cộng hưởng P8 và P13 như thế nào?", expanded=True):
         st.markdown("Có thể thêm biến nhị phân z₈,₁₃ với z≤y8, z≤y13, z≥y8+y13−1 rồi cộng thêm lợi ích synergy·z vào hàm mục tiêu. Đây là cách tuyến tính hóa hiệu ứng bổ trợ giữa AI/bán dẫn và đào tạo nhân lực.")
+
+
+    ai_analysis_panel(
+        lesson_name='Bài 5 - MIP lựa chọn dự án chuyển đổi số',
+        model_name='Mixed Integer Programming + Binary Project Selection',
+        input_params={"lesson": 'Bài 5 - MIP lựa chọn dự án chuyển đổi số', "model": 'Mixed Integer Programming + Binary Project Selection'},
+        result_data=_collect_ai_context(locals()),
+        key="ai_bai_5",
+    )
 
 def _b6_prepare_data():
     """Chuẩn bị dữ liệu, tiêu chí, loại tiêu chí và trọng số chuyên gia."""
@@ -6018,6 +6302,15 @@ result = pd.DataFrame({
         )
 
 
+    ai_analysis_panel(
+        lesson_name='Bài 6 - TOPSIS xếp hạng 6 vùng',
+        model_name='TOPSIS + Entropy Weight + AHP',
+        input_params={"lesson": 'Bài 6 - TOPSIS xếp hạng 6 vùng', "model": 'TOPSIS + Entropy Weight + AHP'},
+        result_data=_collect_ai_context(locals()),
+        key="ai_bai_6",
+    )
+
+
 def _b7_decode(decision_vector):
     return np.asarray(decision_vector, dtype=float).reshape(6, 4)
 
@@ -6758,6 +7051,15 @@ def page_7():
             "Bài 7 dùng λ=0,68 sau khi Bài 4 đã chứng minh ngưỡng khả thi, "
             "không phải tự ý thay đổi tham số mà không giải thích."
         )
+
+
+    ai_analysis_panel(
+        lesson_name='Bài 7 - Pareto đa mục tiêu',
+        model_name='Multi-objective Optimization + Pareto/NSGA-II',
+        input_params={"lesson": 'Bài 7 - Pareto đa mục tiêu', "model": 'Multi-objective Optimization + Pareto/NSGA-II'},
+        result_data=_collect_ai_context(locals()),
+        key="ai_bai_7",
+    )
 
 
 def _b8_initial_state():
@@ -8316,6 +8618,15 @@ def page_8():
         )
 
 
+    ai_analysis_panel(
+        lesson_name='Bài 8 - Tối ưu động 2026-2035',
+        model_name='Dynamic Optimization + Welfare Simulation',
+        input_params={"lesson": 'Bài 8 - Tối ưu động 2026-2035', "model": 'Dynamic Optimization + Welfare Simulation'},
+        result_data=_collect_ai_context(locals()),
+        key="ai_bai_8",
+    )
+
+
 def _b9_parameters():
     """Bảng tham số 8 ngành đúng theo đề Bài 9."""
     rows = [
@@ -8553,6 +8864,15 @@ def page_9():
     with st.expander("d) 'Tốc độ tự động hóa không vượt quá năng lực đào tạo lại' là ràng buộc nào?", expanded=True):
         st.markdown(r"Đó là ràng buộc **DisplacedJobᵢ ≤ RetrainingCapacityᵢ**, tức $c_{1i}x^{AI}_i Risk_i \le d_{1i}x^H_i$. Có thể bổ sung ràng buộc an sinh như DisplacedJobᵢ ≤ 5% lao động ngành.")
 
+
+    ai_analysis_panel(
+        lesson_name='Bài 9 - Tác động AI tới lao động Việt Nam',
+        model_name='NetJob Model + Retraining Constraint',
+        input_params={"lesson": 'Bài 9 - Tác động AI tới lao động Việt Nam', "model": 'NetJob Model + Retraining Constraint'},
+        result_data=_collect_ai_context(locals()),
+        key="ai_bai_9",
+    )
+
 def _b10_data():
     """Dữ liệu kịch bản đúng Bài 10."""
     items = ["I", "D", "AI", "H"]
@@ -8761,6 +9081,15 @@ def page_10():
     with st.expander("c) Nhân lực số có phải hàng hóa bảo hiểm?", expanded=True):
         st.markdown("Có. Trong cú sốc như COVID-19 hoặc thiên tai, lao động qua đào tạo giúp chuyển đổi việc làm và duy trì khả năng hấp thụ công nghệ; vì vậy H không chỉ là đầu tư tăng trưởng mà còn là đầu tư chống chịu.")
 
+
+    ai_analysis_panel(
+        lesson_name='Bài 10 - Quy hoạch ngẫu nhiên hai giai đoạn',
+        model_name='Two-stage Stochastic Programming + VSS/EVPI',
+        input_params={"lesson": 'Bài 10 - Quy hoạch ngẫu nhiên hai giai đoạn', "model": 'Two-stage Stochastic Programming + VSS/EVPI'},
+        result_data=_collect_ai_context(locals()),
+        key="ai_bai_10",
+    )
+
 def _b11_actions():
     """Năm hành động đúng đề Bài 11."""
     return {
@@ -8943,6 +9272,15 @@ def page_11():
         st.markdown(f"Với trạng thái thuận lợi [high, high, high, low], chính sách chọn **{_b11_actions()[a]['Tên']}**, thường mang ý nghĩa củng cố năng lực và kiểm soát rủi ro thay vì chỉ tăng AI.")
     with st.expander("c) AI có thay thế quyết định chính trị không?", expanded=True):
         st.markdown("Không. π* chỉ là đầu vào định lượng. Quy trình chính sách cần có thẩm định chuyên gia, tham vấn xã hội, kiểm toán dữ liệu, đánh giá tác động phân phối và quyết định cuối cùng của cơ quan có thẩm quyền.")
+
+
+    ai_analysis_panel(
+        lesson_name='Bài 11 - Q-learning cho chính sách thích nghi',
+        model_name='Reinforcement Learning + Q-learning',
+        input_params={"lesson": 'Bài 11 - Q-learning cho chính sách thích nghi', "model": 'Reinforcement Learning + Q-learning'},
+        result_data=_collect_ai_context(locals()),
+        key="ai_bai_11",
+    )
 
 def _b12_flow_figure():
     labels = [
@@ -10622,6 +10960,15 @@ def page_12():
         file_name="bai12_pipeline_5_kich_ban.csv",
         mime="text/csv",
         key="download_bai12_pipeline",
+    )
+
+
+    ai_analysis_panel(
+        lesson_name='Bài 12 - Dashboard tích hợp AIDEOM-VN',
+        model_name='Integrated Policy Dashboard + 5 Scenarios + M1-M6',
+        input_params={"lesson": 'Bài 12 - Dashboard tích hợp AIDEOM-VN', "model": 'Integrated Policy Dashboard + 5 Scenarios + M1-M6'},
+        result_data=_collect_ai_context(locals()),
+        key="ai_bai_12",
     )
 
 
