@@ -9,3 +9,4 @@ app_backup_*.py
 requirements_backup_*.txt
 *.log
 .streamlit/secrets.toml
+.streamlit/secrets.toml
