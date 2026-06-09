@@ -1,5 +1,6 @@
 
 import itertools
+import base64
 from pathlib import Path
 
 import numpy as np
@@ -18,6 +19,7 @@ st.set_page_config(
 )
 
 DATA_DIR = Path(__file__).parent / "data"
+ASSETS_DIR = Path(__file__).parent / "assets"
 PLOT_TEMPLATE = "plotly_dark"
 
 
@@ -109,6 +111,166 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+
+
+# =========================
+# Background images
+# =========================
+@st.cache_data(show_spinner=False)
+def image_to_base64(image_path: str) -> str:
+    """Convert local image file to base64 for Streamlit CSS background."""
+    path = Path(image_path)
+    if not path.exists():
+        return ""
+    return base64.b64encode(path.read_bytes()).decode("utf-8")
+
+
+def inject_background_images() -> None:
+    """Inject dashboard background images from assets/bg_main.png and assets/bg_hero.png."""
+    main_bg = image_to_base64(str(ASSETS_DIR / "bg_main.png"))
+    hero_bg = image_to_base64(str(ASSETS_DIR / "bg_hero.png"))
+
+    main_url = f"url(data:image/png;base64,{main_bg})" if main_bg else "none"
+    hero_url = f"url(data:image/png;base64,{hero_bg})" if hero_bg else main_url
+
+    st.markdown(
+        f"""
+        <style>
+        /* ===== AIDEOM background layer ===== */
+        .stApp {{
+            background:
+                linear-gradient(
+                    135deg,
+                    rgba(2, 6, 23, 0.84) 0%,
+                    rgba(8, 17, 34, 0.76) 42%,
+                    rgba(15, 23, 42, 0.90) 100%
+                ),
+                {main_url} !important;
+            background-size: cover !important;
+            background-position: center center !important;
+            background-repeat: no-repeat !important;
+            background-attachment: fixed !important;
+            color: #E5E7EB;
+        }}
+
+        .stApp::before {{
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            background:
+                radial-gradient(circle at 20% 15%, rgba(56, 189, 248, 0.12), transparent 28%),
+                radial-gradient(circle at 85% 70%, rgba(16, 185, 129, 0.10), transparent 30%),
+                linear-gradient(180deg, rgba(2, 6, 23, 0.28), rgba(2, 6, 23, 0.78));
+        }}
+
+        section.main > div,
+        div[data-testid="stAppViewContainer"] > .main {{
+            position: relative;
+            z-index: 1;
+        }}
+
+        [data-testid="stSidebar"] {{
+            background:
+                linear-gradient(
+                    180deg,
+                    rgba(2, 6, 23, 0.97) 0%,
+                    rgba(15, 23, 42, 0.95) 100%
+                ) !important;
+            backdrop-filter: blur(16px);
+            border-right: 1px solid rgba(148, 163, 184, 0.22);
+        }}
+
+        /* ===== Hero blocks on all pages ===== */
+        .hero {{
+            background:
+                linear-gradient(
+                    90deg,
+                    rgba(2, 6, 23, 0.92) 0%,
+                    rgba(15, 23, 42, 0.78) 45%,
+                    rgba(2, 6, 23, 0.60) 100%
+                ),
+                {hero_url} !important;
+            background-size: cover !important;
+            background-position: center center !important;
+            background-repeat: no-repeat !important;
+            border: 1px solid rgba(125, 211, 252, 0.24) !important;
+            box-shadow: 0 24px 70px rgba(2, 6, 23, 0.42) !important;
+        }}
+
+        .aideom-hero {{
+            background:
+                linear-gradient(
+                    90deg,
+                    rgba(2, 6, 23, 0.94) 0%,
+                    rgba(15, 23, 42, 0.76) 46%,
+                    rgba(2, 6, 23, 0.48) 100%
+                ),
+                {hero_url} !important;
+            background-size: cover !important;
+            background-position: center center !important;
+            background-repeat: no-repeat !important;
+            border: 1px solid rgba(125, 211, 252, 0.28) !important;
+            box-shadow: 0 28px 80px rgba(2, 6, 23, 0.45) !important;
+        }}
+
+        /* ===== Readability for content blocks ===== */
+        .section-card,
+        .kpi-card,
+        .aideom-kpi-card,
+        .aideom-level-card,
+        .aideom-feature-card,
+        .aideom-data-card {{
+            backdrop-filter: blur(10px);
+        }}
+
+        .section-card {{
+            background: rgba(15, 23, 42, 0.80) !important;
+            border: 1px solid rgba(148, 163, 184, 0.22) !important;
+        }}
+
+        .kpi-card {{
+            background:
+                linear-gradient(
+                    160deg,
+                    rgba(15, 23, 42, 0.88),
+                    rgba(30, 41, 59, 0.80)
+                ) !important;
+            border: 1px solid rgba(125, 211, 252, 0.18) !important;
+        }}
+
+        .aideom-kpi-card,
+        .aideom-level-card,
+        .aideom-feature-card,
+        .aideom-data-card {{
+            background:
+                linear-gradient(
+                    160deg,
+                    rgba(15, 23, 42, 0.82),
+                    rgba(30, 41, 59, 0.74)
+                ) !important;
+            border: 1px solid rgba(148, 163, 184, 0.22) !important;
+        }}
+
+        .hero-title,
+        .aideom-title {{
+            text-shadow: 0 3px 18px rgba(0, 0, 0, 0.60);
+        }}
+
+        .hero-sub,
+        .aideom-subtitle,
+        .aideom-description {{
+            text-shadow: 0 2px 12px rgba(0, 0, 0, 0.50);
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+inject_background_images()
 
 
 # =========================
