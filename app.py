@@ -127,7 +127,7 @@ def image_to_base64(image_path: str) -> str:
 
 
 def inject_background_images() -> None:
-    """Inject dashboard background images from assets/bg_main.png and assets/bg_hero.png."""
+    """Inject brighter, professional dashboard background and component CSS."""
     main_bg = image_to_base64(str(ASSETS_DIR / "bg_main.png"))
     hero_bg = image_to_base64(str(ASSETS_DIR / "bg_hero.png"))
 
@@ -137,21 +137,42 @@ def inject_background_images() -> None:
     st.markdown(
         f"""
         <style>
-        /* ===== AIDEOM background layer ===== */
+        /* ==========================================================
+           AIDEOM-VN VISUAL POLISH
+           - sáng hơn, dễ đọc hơn
+           - sidebar rõ chữ
+           - bảng tối, đồng bộ dashboard
+           - hero/banner căn ảnh đẹp hơn
+           ========================================================== */
+
+        :root {{
+            --aideom-bg: #0b1426;
+            --aideom-surface: rgba(15, 23, 42, 0.82);
+            --aideom-surface-strong: rgba(15, 23, 42, 0.92);
+            --aideom-border: rgba(125, 211, 252, 0.25);
+            --aideom-text: #F3F7FF;
+            --aideom-muted: #C7D2E6;
+            --aideom-soft: #94A3B8;
+            --aideom-cyan: #67E8F9;
+            --aideom-green: #6EE7B7;
+            --aideom-pink: #FF7A95;
+        }}
+
+        /* ===== Nền tổng thể: sáng hơn nhưng vẫn công nghệ ===== */
         .stApp {{
             background:
                 linear-gradient(
                     135deg,
-                    rgba(2, 6, 23, 0.84) 0%,
-                    rgba(8, 17, 34, 0.76) 42%,
-                    rgba(15, 23, 42, 0.90) 100%
+                    rgba(3, 12, 28, 0.66) 0%,
+                    rgba(8, 22, 43, 0.58) 45%,
+                    rgba(3, 12, 28, 0.74) 100%
                 ),
                 {main_url} !important;
             background-size: cover !important;
-            background-position: center center !important;
+            background-position: center top !important;
             background-repeat: no-repeat !important;
             background-attachment: fixed !important;
-            color: #E5E7EB;
+            color: var(--aideom-text) !important;
         }}
 
         .stApp::before {{
@@ -161,108 +182,431 @@ def inject_background_images() -> None:
             pointer-events: none;
             z-index: 0;
             background:
-                radial-gradient(circle at 20% 15%, rgba(56, 189, 248, 0.12), transparent 28%),
-                radial-gradient(circle at 85% 70%, rgba(16, 185, 129, 0.10), transparent 30%),
-                linear-gradient(180deg, rgba(2, 6, 23, 0.28), rgba(2, 6, 23, 0.78));
+                radial-gradient(circle at 20% 14%, rgba(56, 189, 248, 0.18), transparent 30%),
+                radial-gradient(circle at 86% 70%, rgba(16, 185, 129, 0.14), transparent 32%),
+                linear-gradient(180deg, rgba(3, 7, 18, 0.10), rgba(3, 7, 18, 0.48));
         }}
 
-        section.main > div,
-        div[data-testid="stAppViewContainer"] > .main {{
+        div[data-testid="stAppViewContainer"] > .main,
+        section.main > div {{
             position: relative;
             z-index: 1;
         }}
 
+        /* Xóa dải trắng trên cùng của Streamlit */
+        header[data-testid="stHeader"],
+        div[data-testid="stToolbar"],
+        .stAppHeader {{
+            background: rgba(3, 7, 18, 0.08) !important;
+            backdrop-filter: blur(10px) !important;
+        }}
+
+        header[data-testid="stHeader"]::before {{
+            background: transparent !important;
+        }}
+
+        /* ===== Khu nội dung chính: chừa khoảng và dễ thở hơn ===== */
+        .block-container {{
+            padding-top: 2.6rem !important;
+            padding-bottom: 3rem !important;
+            max-width: 1240px !important;
+        }}
+
+        /* ===== Chữ toàn trang ===== */
+        .stMarkdown,
+        .stText,
+        .stCaption,
+        p,
+        li,
+        label,
+        span {{
+            color: var(--aideom-text);
+        }}
+
+        p,
+        li {{
+            font-size: 1.02rem;
+            line-height: 1.72;
+        }}
+
+        h1, h2, h3, h4 {{
+            color: #FFFFFF !important;
+            letter-spacing: -0.035em !important;
+            text-shadow: 0 2px 14px rgba(0, 0, 0, 0.42);
+        }}
+
+        h2 {{
+            margin-top: 1.85rem !important;
+            margin-bottom: 0.78rem !important;
+            font-weight: 850 !important;
+        }}
+
+        h3 {{
+            margin-top: 1.1rem !important;
+            font-weight: 780 !important;
+        }}
+
+        .muted,
+        .caption,
+        small,
+        div[data-testid="stCaptionContainer"] {{
+            color: var(--aideom-muted) !important;
+        }}
+
+        /* ===== Sidebar sáng chữ hơn ===== */
+        section[data-testid="stSidebar"],
         [data-testid="stSidebar"] {{
             background:
                 linear-gradient(
                     180deg,
-                    rgba(2, 6, 23, 0.97) 0%,
-                    rgba(15, 23, 42, 0.95) 100%
+                    rgba(3, 8, 20, 0.98) 0%,
+                    rgba(8, 16, 33, 0.97) 50%,
+                    rgba(11, 22, 43, 0.97) 100%
                 ) !important;
-            backdrop-filter: blur(16px);
-            border-right: 1px solid rgba(148, 163, 184, 0.22);
+            backdrop-filter: blur(18px) !important;
+            border-right: 1px solid rgba(125, 211, 252, 0.18) !important;
         }}
 
-        /* ===== Hero blocks on all pages ===== */
+        [data-testid="stSidebar"] * {{
+            color: #DDEBFF !important;
+        }}
+
+        [data-testid="stSidebar"] h1,
+        [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3,
+        [data-testid="stSidebar"] .stMarkdown p {{
+            color: #F8FAFC !important;
+        }}
+
+        [data-testid="stSidebar"] label,
+        [data-testid="stSidebar"] span,
+        [data-testid="stSidebar"] p {{
+            font-size: 0.95rem !important;
+            opacity: 1 !important;
+        }}
+
+        [data-testid="stSidebar"] [role="radiogroup"] label {{
+            padding: 0.34rem 0.25rem !important;
+            border-radius: 10px !important;
+            transition: background 160ms ease, color 160ms ease;
+        }}
+
+        [data-testid="stSidebar"] [role="radiogroup"] label:hover {{
+            background: rgba(56, 189, 248, 0.12) !important;
+        }}
+
+        /* ===== Hero các trang bài: ảnh đẹp hơn, chữ không bị chìm ===== */
         .hero {{
+            position: relative;
+            overflow: hidden;
+            padding: 32px 34px !important;
+            border-radius: 24px !important;
             background:
                 linear-gradient(
                     90deg,
-                    rgba(2, 6, 23, 0.92) 0%,
-                    rgba(15, 23, 42, 0.78) 45%,
-                    rgba(2, 6, 23, 0.60) 100%
+                    rgba(5, 13, 30, 0.94) 0%,
+                    rgba(11, 28, 54, 0.80) 46%,
+                    rgba(3, 13, 30, 0.52) 100%
                 ),
                 {hero_url} !important;
             background-size: cover !important;
-            background-position: center center !important;
+            background-position: center 45% !important;
             background-repeat: no-repeat !important;
-            border: 1px solid rgba(125, 211, 252, 0.24) !important;
-            box-shadow: 0 24px 70px rgba(2, 6, 23, 0.42) !important;
+            border: 1px solid rgba(125, 211, 252, 0.34) !important;
+            box-shadow:
+                0 24px 70px rgba(2, 6, 23, 0.40),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+            margin-bottom: 1.15rem !important;
         }}
 
+        .hero::after,
+        .aideom-hero::after {{
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background:
+                linear-gradient(90deg, rgba(3, 7, 18, 0.36), transparent 52%),
+                radial-gradient(circle at 92% 18%, rgba(103, 232, 249, 0.18), transparent 28%);
+            z-index: 1;
+        }}
+
+        .hero > *,
+        .aideom-hero > * {{
+            position: relative;
+            z-index: 2;
+        }}
+
+        .hero-title {{
+            font-size: clamp(2.15rem, 4vw, 3.2rem) !important;
+            line-height: 1.04 !important;
+            font-weight: 900 !important;
+            max-width: 980px !important;
+            color: #FFFFFF !important;
+            text-shadow: 0 4px 22px rgba(0, 0, 0, 0.72) !important;
+        }}
+
+        .hero-sub {{
+            color: #E5F0FF !important;
+            font-size: 1.06rem !important;
+            line-height: 1.65 !important;
+            max-width: 1040px !important;
+            text-shadow: 0 2px 14px rgba(0, 0, 0, 0.65) !important;
+        }}
+
+        .pill {{
+            background: rgba(6, 95, 70, 0.72) !important;
+            color: #D1FAE5 !important;
+            border: 1px solid rgba(52, 211, 153, 0.48) !important;
+            box-shadow: 0 0 18px rgba(16, 185, 129, 0.10);
+        }}
+
+        /* Trang chủ hero */
         .aideom-hero {{
             background:
                 linear-gradient(
                     90deg,
-                    rgba(2, 6, 23, 0.94) 0%,
-                    rgba(15, 23, 42, 0.76) 46%,
-                    rgba(2, 6, 23, 0.48) 100%
+                    rgba(5, 13, 30, 0.94) 0%,
+                    rgba(11, 28, 54, 0.77) 48%,
+                    rgba(3, 13, 30, 0.40) 100%
                 ),
                 {hero_url} !important;
             background-size: cover !important;
-            background-position: center center !important;
+            background-position: center 43% !important;
             background-repeat: no-repeat !important;
-            border: 1px solid rgba(125, 211, 252, 0.28) !important;
-            box-shadow: 0 28px 80px rgba(2, 6, 23, 0.45) !important;
+            border: 1px solid rgba(125, 211, 252, 0.36) !important;
+            box-shadow:
+                0 28px 80px rgba(2, 6, 23, 0.42),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
         }}
 
-        /* ===== Readability for content blocks ===== */
+        .aideom-title,
+        .aideom-title-accent {{
+            text-shadow: 0 4px 22px rgba(0, 0, 0, 0.65) !important;
+        }}
+
+        .aideom-subtitle,
+        .aideom-description {{
+            color: #E6F0FF !important;
+            text-shadow: 0 2px 14px rgba(0, 0, 0, 0.62) !important;
+        }}
+
+        .aideom-description {{
+            max-width: 1020px !important;
+        }}
+
+        /* ===== Card/KPI chuyên nghiệp hơn ===== */
         .section-card,
         .kpi-card,
         .aideom-kpi-card,
         .aideom-level-card,
         .aideom-feature-card,
         .aideom-data-card {{
-            backdrop-filter: blur(10px);
-        }}
-
-        .section-card {{
-            background: rgba(15, 23, 42, 0.80) !important;
-            border: 1px solid rgba(148, 163, 184, 0.22) !important;
-        }}
-
-        .kpi-card {{
             background:
                 linear-gradient(
                     160deg,
-                    rgba(15, 23, 42, 0.88),
-                    rgba(30, 41, 59, 0.80)
+                    rgba(18, 33, 58, 0.88),
+                    rgba(10, 24, 46, 0.82)
                 ) !important;
-            border: 1px solid rgba(125, 211, 252, 0.18) !important;
+            border: 1px solid rgba(148, 210, 255, 0.24) !important;
+            box-shadow:
+                0 18px 42px rgba(2, 6, 23, 0.30),
+                inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+            backdrop-filter: blur(12px) !important;
         }}
 
-        .aideom-kpi-card,
-        .aideom-level-card,
-        .aideom-feature-card,
-        .aideom-data-card {{
-            background:
-                linear-gradient(
-                    160deg,
-                    rgba(15, 23, 42, 0.82),
-                    rgba(30, 41, 59, 0.74)
-                ) !important;
-            border: 1px solid rgba(148, 163, 184, 0.22) !important;
+        .kpi-card,
+        .aideom-kpi-card {{
+            min-height: 124px !important;
         }}
 
-        .hero-title,
-        .aideom-title {{
-            text-shadow: 0 3px 18px rgba(0, 0, 0, 0.60);
+        .kpi-label,
+        .aideom-kpi-label {{
+            color: #BFD3EE !important;
+            font-weight: 700 !important;
         }}
 
-        .hero-sub,
-        .aideom-subtitle,
-        .aideom-description {{
-            text-shadow: 0 2px 12px rgba(0, 0, 0, 0.50);
+        .kpi-value,
+        .aideom-kpi-value,
+        div[data-testid="stMetricValue"] {{
+            color: #FF7A95 !important;
+            text-shadow: 0 2px 16px rgba(255, 122, 149, 0.16) !important;
+        }}
+
+        .kpi-note,
+        .aideom-kpi-note {{
+            color: #A7F3D0 !important;
+            background: rgba(6, 95, 70, 0.28) !important;
+        }}
+
+        /* ===== Expander, tabs, input widgets ===== */
+        details[data-testid="stExpander"] {{
+            background: rgba(13, 27, 50, 0.72) !important;
+            border: 1px solid rgba(148, 210, 255, 0.20) !important;
+            border-radius: 16px !important;
+            overflow: hidden !important;
+            box-shadow: 0 12px 32px rgba(2, 6, 23, 0.22) !important;
+        }}
+
+        details[data-testid="stExpander"] summary {{
+            color: #F8FAFC !important;
+            font-weight: 800 !important;
+            background: rgba(15, 35, 66, 0.72) !important;
+        }}
+
+        button[data-baseweb="tab"] {{
+            background: rgba(15, 35, 66, 0.62) !important;
+            border-radius: 999px !important;
+            margin-right: 0.35rem !important;
+            color: #D9ECFF !important;
+            border: 1px solid rgba(148, 210, 255, 0.16) !important;
+        }}
+
+        button[data-baseweb="tab"][aria-selected="true"] {{
+            background: rgba(14, 165, 233, 0.24) !important;
+            color: #FFFFFF !important;
+            border-color: rgba(103, 232, 249, 0.40) !important;
+        }}
+
+        /* ===== Alert boxes Streamlit ===== */
+        div[data-testid="stAlert"] {{
+            border-radius: 16px !important;
+            border: 1px solid rgba(148, 210, 255, 0.18) !important;
+            box-shadow: 0 10px 28px rgba(2, 6, 23, 0.18) !important;
+        }}
+
+        div[data-testid="stAlert"] * {{
+            color: #F8FAFC !important;
+        }}
+
+        /* ===== Dataframe mặc định: bọc tối hơn, đỡ cảm giác bảng trắng bị cắt ===== */
+        div[data-testid="stDataFrame"],
+        div[data-testid="stTable"] {{
+            background: rgba(11, 24, 46, 0.88) !important;
+            border: 1px solid rgba(148, 210, 255, 0.24) !important;
+            border-radius: 18px !important;
+            overflow: hidden !important;
+            box-shadow: 0 18px 42px rgba(2, 6, 23, 0.28) !important;
+        }}
+
+        div[data-testid="stDataFrame"] * {{
+            color: #EAF2FF !important;
+        }}
+
+        /* Glide dataframe variables - Streamlit versions that support them will use this */
+        div[data-testid="stDataFrame"] {{
+            --gdg-bg-cell: rgba(15, 30, 55, 0.96) !important;
+            --gdg-bg-cell-medium: rgba(18, 36, 64, 0.96) !important;
+            --gdg-bg-header: rgba(23, 48, 84, 0.98) !important;
+            --gdg-text-dark: #F3F7FF !important;
+            --gdg-text-medium: #D4E3F8 !important;
+            --gdg-text-light: #AFC4DD !important;
+            --gdg-accent-color: #67E8F9 !important;
+            --gdg-border-color: rgba(148, 210, 255, 0.20) !important;
+        }}
+
+        /* Pandas Styler/HTML tables generated by the helper below */
+        .aideom-table-wrap {{
+            width: 100%;
+            overflow-x: auto;
+            margin: 0.75rem 0 1.05rem 0;
+            border-radius: 18px;
+            border: 1px solid rgba(148, 210, 255, 0.24);
+            box-shadow: 0 18px 42px rgba(2, 6, 23, 0.26);
+            background: rgba(11, 24, 46, 0.88);
+        }}
+
+        .aideom-table-wrap table {{
+            width: 100%;
+            border-collapse: separate !important;
+            border-spacing: 0 !important;
+            background: transparent !important;
+            color: #EAF2FF !important;
+            font-size: 0.92rem !important;
+            line-height: 1.48 !important;
+        }}
+
+        .aideom-table-wrap thead th {{
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: linear-gradient(180deg, rgba(31, 64, 105, 0.98), rgba(21, 45, 78, 0.98)) !important;
+            color: #F8FAFC !important;
+            font-weight: 850 !important;
+            text-align: left !important;
+            padding: 0.72rem 0.82rem !important;
+            border-bottom: 1px solid rgba(148, 210, 255, 0.30) !important;
+            white-space: nowrap;
+        }}
+
+        .aideom-table-wrap tbody td,
+        .aideom-table-wrap tbody th {{
+            background: rgba(15, 30, 55, 0.92) !important;
+            color: #EAF2FF !important;
+            padding: 0.68rem 0.82rem !important;
+            border-bottom: 1px solid rgba(148, 210, 255, 0.11) !important;
+            vertical-align: top !important;
+        }}
+
+        .aideom-table-wrap tbody tr:nth-child(even) td,
+        .aideom-table-wrap tbody tr:nth-child(even) th {{
+            background: rgba(18, 38, 68, 0.92) !important;
+        }}
+
+        .aideom-table-wrap tbody tr:hover td,
+        .aideom-table-wrap tbody tr:hover th {{
+            background: rgba(23, 70, 115, 0.70) !important;
+        }}
+
+        .aideom-table-wrap caption {{
+            color: #C7D2E6 !important;
+        }}
+
+        /* ===== Plotly chart wrapper ===== */
+        div[data-testid="stPlotlyChart"] {{
+            background: rgba(11, 24, 46, 0.72) !important;
+            border: 1px solid rgba(148, 210, 255, 0.18) !important;
+            border-radius: 18px !important;
+            padding: 0.35rem !important;
+            box-shadow: 0 18px 42px rgba(2, 6, 23, 0.22) !important;
+        }}
+
+        /* ===== Code block ===== */
+        div[data-testid="stCodeBlock"] {{
+            border-radius: 16px !important;
+            border: 1px solid rgba(148, 210, 255, 0.18) !important;
+            overflow: hidden !important;
+        }}
+
+        /* ===== Buttons ===== */
+        .stDownloadButton button,
+        .stButton button {{
+            border-radius: 999px !important;
+            border: 1px solid rgba(103, 232, 249, 0.32) !important;
+            background: linear-gradient(135deg, rgba(14, 165, 233, 0.20), rgba(16, 185, 129, 0.16)) !important;
+            color: #F8FAFC !important;
+            font-weight: 800 !important;
+        }}
+
+        .stDownloadButton button:hover,
+        .stButton button:hover {{
+            border-color: rgba(103, 232, 249, 0.70) !important;
+            box-shadow: 0 0 24px rgba(56, 189, 248, 0.18) !important;
+        }}
+
+        /* ===== Mobile/tablet ===== */
+        @media (max-width: 900px) {{
+            .block-container {{
+                padding-left: 1rem !important;
+                padding-right: 1rem !important;
+            }}
+            .hero {{
+                padding: 24px 22px !important;
+                background-position: center center !important;
+            }}
+            .hero-title {{
+                font-size: 2.05rem !important;
+            }}
         }}
         </style>
         """,
@@ -271,6 +615,100 @@ def inject_background_images() -> None:
 
 
 inject_background_images()
+
+
+# =========================
+# Visual rendering helpers
+# =========================
+_AIDEOM_ORIGINAL_DATAFRAME = st.dataframe
+_AIDEOM_ORIGINAL_PLOTLY_CHART = st.plotly_chart
+
+
+def _aideom_html_table(data, hide_index=False):
+    """Render pandas DataFrame/Styler as a dark professional HTML table."""
+    try:
+        from pandas.io.formats.style import Styler
+    except Exception:  # pragma: no cover
+        Styler = ()
+
+    if isinstance(data, pd.DataFrame):
+        html = data.to_html(
+            index=not bool(hide_index),
+            escape=True,
+            border=0,
+            classes="aideom-table",
+        )
+    elif Styler and isinstance(data, Styler):
+        styler = data
+        if hide_index:
+            try:
+                styler = styler.hide(axis="index")
+            except Exception:
+                pass
+        try:
+            styler = styler.set_table_attributes('class="aideom-table"')
+            styler = styler.set_table_styles(
+                [
+                    {"selector": "th", "props": [("font-weight", "850")]},
+                    {"selector": "td", "props": [("color", "#EAF2FF")]},
+                ],
+                overwrite=False,
+            )
+        except Exception:
+            pass
+        html = styler.to_html()
+    else:
+        return None
+
+    return f"<div class='aideom-table-wrap'>{html}</div>"
+
+
+def _aideom_dataframe(data=None, *args, **kwargs):
+    """Default replacement for st.dataframe to keep all tables visually consistent."""
+    hide_index = kwargs.pop("hide_index", False)
+    kwargs.pop("use_container_width", None)
+    kwargs.pop("height", None)
+
+    html = _aideom_html_table(data, hide_index=hide_index)
+    if html is not None:
+        return st.markdown(html, unsafe_allow_html=True)
+
+    kwargs["hide_index"] = hide_index
+    return _AIDEOM_ORIGINAL_DATAFRAME(data, *args, **kwargs)
+
+
+def _aideom_plotly_chart(fig, *args, **kwargs):
+    """Apply a uniform transparent dark chart container to all Plotly figures."""
+    try:
+        fig.update_layout(
+            paper_bgcolor="rgba(11, 24, 46, 0.22)",
+            plot_bgcolor="rgba(3, 10, 24, 0.20)",
+            font=dict(color="#EAF2FF", family="Inter, system-ui, sans-serif", size=13),
+            title=dict(font=dict(color="#F8FAFC", size=18)),
+            legend=dict(
+                bgcolor="rgba(3, 10, 24, 0.30)",
+                bordercolor="rgba(148, 210, 255, 0.18)",
+                borderwidth=1,
+            ),
+            margin=dict(l=14, r=14, t=56, b=18),
+        )
+        fig.update_xaxes(
+            gridcolor="rgba(148, 210, 255, 0.12)",
+            zerolinecolor="rgba(148, 210, 255, 0.18)",
+            linecolor="rgba(148, 210, 255, 0.22)",
+        )
+        fig.update_yaxes(
+            gridcolor="rgba(148, 210, 255, 0.12)",
+            zerolinecolor="rgba(148, 210, 255, 0.18)",
+            linecolor="rgba(148, 210, 255, 0.22)",
+        )
+    except Exception:
+        pass
+    return _AIDEOM_ORIGINAL_PLOTLY_CHART(fig, *args, **kwargs)
+
+
+st.dataframe = _aideom_dataframe
+st.plotly_chart = _aideom_plotly_chart
 
 
 # =========================
