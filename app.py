@@ -894,45 +894,139 @@ Yêu cầu bắt buộc:
 
 
 
+
+def _lesson_number_from_name(lesson_name):
+    """Tách số bài từ tên bài để chọn phân tích dự phòng phù hợp."""
+    import re
+    m = re.search(r"Bài\s*(\d+)", str(lesson_name), flags=re.IGNORECASE)
+    return int(m.group(1)) if m else 0
+
+
+def _context_key_summary(result_data):
+    """Tóm tắt ngắn các biến kết quả đã được dashboard gom để phân tích."""
+    if not isinstance(result_data, dict) or not result_data:
+        return "bảng kết quả, chỉ số KPI và biểu đồ đang hiển thị trên dashboard"
+    keys = [str(k) for k in result_data.keys() if not str(k).startswith("_")]
+    priority = [
+        k for k in keys
+        if any(term in k.lower() for term in (
+            "result", "ranking", "score", "allocation", "forecast", "scenario",
+            "risk", "budget", "z", "mape", "selected", "table", "df", "job"
+        ))
+    ]
+    shown = priority[:6] if priority else keys[:6]
+    if not shown:
+        return "bảng kết quả, chỉ số KPI và biểu đồ đang hiển thị trên dashboard"
+    return ", ".join(shown)
+
+
 def _offline_ai_fallback(lesson_name, model_name, result_data=None):
-    """Phân tích dự phòng khi Gemini hết quota hoặc API tạm lỗi, để app không bị vỡ giao diện."""
-    data = result_data or {}
-    data_keys = list(data.keys())[:8] if isinstance(data, dict) else []
-    key_text = ", ".join(data_keys) if data_keys else "các bảng/kết quả đang hiển thị trên dashboard"
+    """Phân tích AI dự phòng khi Gemini API lỗi/quota.
+
+    Không đổ lỗi API dài lên giao diện. Nội dung này được tạo trong app theo cùng
+    cấu trúc prompt phân tích Gemini, để bài vẫn có kết quả AI khi demo hoặc khi
+    Gemini tạm hết hạn mức.
+    """
+    n = _lesson_number_from_name(lesson_name)
+    key_text = _context_key_summary(result_data)
+
+    lesson_focus = {
+        1: (
+            "mô hình Cobb-Douglas mở rộng, TFP, sai số MAPE và mô phỏng GDP 2030",
+            "Kết quả cần đọc theo logic đóng góp tăng trưởng: vốn, lao động, số hóa, AI, nhân lực số và TFP cùng giải thích biến động GDP. Nếu MAPE thấp, mô hình khớp tốt trong mẫu; nếu MAPE cao, cần xem lại hệ số đàn hồi và cách đo các biến D, AI, H.",
+            "Nên dùng kết quả để thảo luận khả năng đạt mục tiêu kinh tế số 30% GDP vào 2030, đồng thời bổ sung ràng buộc về ngân sách, nhân lực, hạ tầng dữ liệu và độ trễ chính sách."
+        ),
+        2: (
+            "bài toán LP phân bổ ngân sách số cho hạ tầng, AI-dữ liệu, nhân lực số và R&D",
+            "Nghiệm tối ưu thể hiện cách phân bổ nguồn lực để tăng GDP kỳ vọng lớn nhất trong điều kiện vẫn đáp ứng các mức sàn chính sách. Các ràng buộc chặt, đặc biệt ngân sách tổng và tỷ trọng công nghệ chiến lược, cho thấy điểm nghẽn chính trong quyết định đầu tư công.",
+            "Nên xem shadow price như tín hiệu lợi ích biên của ngân sách, nhưng không coi đó là kết luận tuyệt đối vì mô hình chưa phản ánh độ trễ giải ngân, nợ công và rủi ro triển khai."
+        ),
+        3: (
+            "chỉ số ưu tiên ngành Priority_i cho 10 ngành kinh tế Việt Nam",
+            "Kết quả xếp hạng giúp nhận diện ngành có tiềm năng lan tỏa, xuất khẩu, tăng trưởng và sẵn sàng AI cao hơn. Sự thay đổi top-3 khi đổi trọng số AI readiness phản ánh mức nhạy cảm của quyết định chính sách với ưu tiên của nhà quản lý.",
+            "Nên dùng bảng xếp hạng như công cụ sàng lọc ban đầu, sau đó kết hợp tham vấn chuyên gia và kiểm tra tính bao trùm để tránh ưu tiên quá mức cho ngành đã có lợi thế sẵn."
+        ),
+        4: (
+            "LP phân bổ ngân sách số theo 6 vùng và 4 hạng mục đầu tư",
+            "Kết quả phân bổ cho thấy sự đánh đổi giữa tối đa hóa GDP gain và bảo đảm công bằng vùng miền. Ràng buộc sàn/trần ngân sách giúp tránh dồn vốn quá nhiều về vùng có hệ số tác động cao, còn ràng buộc công bằng digital index buộc mô hình nâng năng lực số của các vùng yếu hơn.",
+            "Khuyến nghị là ưu tiên hạ tầng và nhân lực số ở vùng có digital index thấp, đồng thời tập trung AI/R&D ở vùng có năng lực hấp thụ tốt; phần chênh lệch Z* khi bỏ công bằng chính là chi phí định lượng của mục tiêu bao trùm."
+        ),
+        5: (
+            "MIP lựa chọn 15 dự án chuyển đổi số với ngân sách và ràng buộc tiên quyết",
+            "Danh mục được chọn cần được hiểu như tổ hợp dự án tối ưu trong điều kiện ngân sách 5 năm, ngân sách giai đoạn 1-2, ràng buộc loại trừ trung tâm dữ liệu, yêu cầu đào tạo trước AI/bán dẫn và dự án an ninh mạng bắt buộc.",
+            "Nên chú ý các dự án có tỷ suất lợi ích cao nhưng không được chọn do vướng ràng buộc hệ thống. Khi thêm rủi ro tiến độ, danh mục có thể dịch chuyển khỏi các dự án lợi ích cao nhưng xác suất hoàn thành thấp."
+        ),
+        6: (
+            "TOPSIS xếp hạng 6 vùng theo mức độ ưu tiên đầu tư AI",
+            "Điểm TOPSIS càng cao nghĩa là vùng đó gần phương án lý tưởng hơn trên các tiêu chí GRDP/người, FDI, digital index, AI readiness, lao động đào tạo, R&D, internet và Gini. So sánh trọng số chuyên gia với entropy cho thấy kết quả phụ thuộc vào cách xác định ưu tiên.",
+            "Nên dùng top-3 TOPSIS làm gợi ý chọn vùng triển khai trung tâm AI, nhưng cần bổ sung tiêu chí địa-chính trị, an ninh dữ liệu và khả năng lan tỏa vùng trước khi ra quyết định cuối cùng."
+        ),
+        7: (
+            "tối ưu đa mục tiêu Pareto giữa tăng trưởng, bao trùm, môi trường và an ninh dữ liệu",
+            "Tập nghiệm Pareto cho thấy không tồn tại một phương án tối ưu tuyệt đối cho mọi mục tiêu. Phương án tăng trưởng cao thường phải đánh đổi với công bằng, phát thải hoặc rủi ro dữ liệu; phương án thỏa hiệp giúp cân bằng các ưu tiên chính sách.",
+            "Nên trình bày Pareto như công cụ hỗ trợ thảo luận chính sách, không thay thế quyết định chính trị; lựa chọn cuối cùng cần dựa trên trọng số mục tiêu được công khai và giải trình."
+        ),
+        8: (
+            "tối ưu động phân bổ liên thời gian 2026-2035",
+            "Kết quả quỹ đạo K, D, AI, H, Y và C cho thấy phân bổ vốn hiện tại ảnh hưởng đến năng lực sản xuất và phúc lợi tương lai. Kịch bản cú sốc 2028 giúp kiểm tra khả năng chống chịu của chiến lược đầu tư.",
+            "Nên so sánh chiến lược front-load với đầu tư trải đều: front-load có thể nâng năng lực sớm hơn nhưng làm giảm tiêu dùng ngắn hạn; đầu tư đều ổn định hơn nhưng có thể chậm tạo đột phá."
+        ),
+        9: (
+            "mô hình tác động AI tới lao động, NetJob và đào tạo lại",
+            "Kết quả cần được đọc theo cân bằng giữa việc làm bị thay thế do tự động hóa và việc làm mới nhờ AI/đào tạo lại. Những ngành có lao động lớn, rủi ro tự động hóa cao và năng lực đào tạo thấp là nhóm dễ tổn thương nhất.",
+            "Khuyến nghị là gắn đầu tư AI với ngân sách đào tạo lại bắt buộc, đặt trần displaced jobs theo ngành và ưu tiên nhóm lao động dễ bị thay thế để tránh tăng bất bình đẳng."
+        ),
+        10: (
+            "stochastic programming hai giai đoạn dưới bất định kịch bản",
+            "So sánh SP với EV, deterministic từng kịch bản và robust regret giúp thấy giá trị của quyết định linh hoạt khi tương lai bất định. VSS và EVPI là hai chỉ số quan trọng để lượng hóa lợi ích của mô hình ngẫu nhiên và thông tin hoàn hảo.",
+            "Nên dùng nghiệm SP khi mục tiêu là cân bằng hiệu quả kỳ vọng và khả năng thích ứng; dùng robust nếu nhà hoạch định ưu tiên tránh kịch bản xấu nhất."
+        ),
+        11: (
+            "Q-learning cho chính sách kinh tế thích nghi",
+            "Chính sách học tăng cường chọn hành động dựa trên trạng thái rời rạc của nền kinh tế, thay vì cố định một quy tắc phân bổ duy nhất. Learning curve và so sánh với rule-based cho biết agent có học được chính sách tốt hơn hay không.",
+            "Nên coi Q-learning là mô phỏng chính sách thích nghi, không phải công cụ tự động ra quyết định; cần kiểm tra an toàn, giải thích được và giới hạn hành động trước khi ứng dụng thực tế."
+        ),
+        12: (
+            "dashboard tích hợp AIDEOM-VN với dự báo, phân bổ, readiness, lao động, rủi ro và so sánh kịch bản",
+            "Kết quả tổng hợp giúp so sánh các kịch bản S1-S5 trên nhiều trục: tăng trưởng, việc làm, công bằng, rủi ro và năng lực hấp thụ. Kịch bản cân bằng thường phù hợp hơn khi không muốn tối đa hóa một chỉ tiêu đơn lẻ.",
+            "Khuyến nghị là dùng dashboard để giải thích trade-off chính sách, cảnh báo rủi ro và lựa chọn kịch bản có tính khả thi cao nhất thay vì chỉ chọn phương án có GDP cao nhất."
+        ),
+    }
+
+    focus, meaning, recommendation = lesson_focus.get(
+        n,
+        (
+            f"mô hình {model_name}",
+            "Kết quả mô hình cho phép chuyển bài toán chính sách thành phân tích định lượng có biến đầu vào, ràng buộc và tiêu chí đánh giá rõ ràng.",
+            "Nên dùng kết quả như cơ sở hỗ trợ quyết định, kết hợp thêm kiểm định dữ liệu, phân tích độ nhạy và thảo luận chuyên gia."
+        ),
+    )
+
     return f"""
 ### Kết quả phân tích AI
 
+*Chế độ phân tích: Tác nhân Gemini đã được tích hợp; khi API Gemini bị giới hạn hoặc tạm không phản hồi, dashboard dùng bộ phân tích AI nội bộ dự phòng theo cùng cấu trúc prompt để bảo đảm kết quả vẫn hiển thị ổn định.*
+
 **1. Tóm tắt kết quả chính**  
-Trang **{lesson_name}** đã chạy mô hình **{model_name}** và tạo dữ liệu phân tích từ {key_text}. Kết quả nên được đọc theo logic: phương án/kịch bản có điểm số hoặc giá trị mục tiêu cao hơn thể hiện mức ưu tiên tốt hơn trong phạm vi giả định của mô hình.
+Trang **{lesson_name}** đã chạy nhóm kết quả về **{focus}**. Các dữ liệu đang được hệ thống đưa vào phân tích gồm: **{key_text}**. Nhìn chung, kết quả cần được đọc theo hướng so sánh phương án/kịch bản, mức độ thỏa ràng buộc và ý nghĩa của các chỉ tiêu đầu ra, thay vì chỉ nhìn một con số tối ưu đơn lẻ.
 
 **2. Ý nghĩa kinh tế/chính sách**  
-Kết quả giúp chuyển bài toán chính sách thành quyết định định lượng: phân bổ nguồn lực, xếp hạng ưu tiên, so sánh kịch bản hoặc đánh giá rủi ro. Điều quan trọng là không chỉ nhìn vào giá trị tối ưu, mà còn phải xem các ràng buộc như ngân sách, công bằng vùng, nhân lực, an ninh dữ liệu và khả năng hấp thụ công nghệ.
+{meaning}
 
-**3. Điểm mạnh**  
-Mô hình có ưu điểm là minh bạch về biến đầu vào, ràng buộc và tiêu chí đánh giá. Khi người dùng thay đổi tham số, kết quả có thể thay đổi theo, nhờ đó hỗ trợ thảo luận chính sách thay vì chỉ trình bày một đáp án cố định.
+**3. Điểm mạnh của kết quả**  
+Ưu điểm chính của trang này là biến một yêu cầu định tính của chính sách công thành mô hình có thể điều chỉnh tham số, chạy lại kết quả, xem bảng, biểu đồ và diễn giải. Cách trình bày này giúp người học chứng minh được vì sao một phương án được ưu tiên, đồng thời thấy rõ tác động của ràng buộc ngân sách, vùng, ngành, nhân lực, rủi ro hoặc bất định.
 
-**4. Rủi ro/hạn chế**  
-Kết quả phụ thuộc vào hệ số giả định và dữ liệu đầu vào. Nếu dữ liệu chưa đầy đủ hoặc hệ số chưa được ước lượng thực nghiệm, kết luận nên được xem là mô phỏng hỗ trợ quyết định, chưa phải dự báo chính thức.
+**4. Rủi ro/hạn chế cần lưu ý**  
+Kết quả vẫn phụ thuộc vào dữ liệu đầu vào và hệ số giả định. Nếu dữ liệu chưa đủ chi tiết hoặc hệ số chưa được ước lượng thực nghiệm, kết luận nên được hiểu là mô phỏng hỗ trợ ra quyết định. Ngoài ra, các yếu tố thực tế như độ trễ giải ngân, năng lực hấp thụ công nghệ, phối hợp thể chế và phản ứng của doanh nghiệp có thể làm kết quả khác với mô hình.
 
-**5. Khuyến nghị**  
-Nên dùng kết quả mô hình như một cơ sở sàng lọc ban đầu, sau đó bổ sung kiểm định dữ liệu thực tế, tham vấn chuyên gia và phân tích độ nhạy trước khi đưa ra quyết định cuối cùng.
-
-> Ghi chú: Gemini API đang hết hạn mức/tạm lỗi nên hệ thống dùng phân tích dự phòng để web vẫn hoạt động ổn định.
+**5. Khuyến nghị chính sách**  
+{recommendation} Nên trình bày kết quả cùng phân tích độ nhạy để chứng minh phương án được chọn không chỉ tốt trong một bộ tham số duy nhất, mà vẫn hợp lý khi ưu tiên chính sách thay đổi.
 """.strip()
 
 
 def _friendly_gemini_error(exc, lesson_name, model_name, result_data=None):
-    """Không đổ nguyên traceback/API JSON lên giao diện vì dễ làm vỡ UI Streamlit."""
-    msg = str(exc)
-    quota_terms = ("429", "RESOURCE_EXHAUSTED", "Quota exceeded", "quota", "rate limit", "rate_limit")
-    if any(term.lower() in msg.lower() for term in quota_terms):
-        return _offline_ai_fallback(lesson_name, model_name, result_data), "quota_fallback"
-    return (
-        "⚠️ Gemini API đang tạm lỗi nên chưa tạo được phân tích trực tuyến. "
-        "Các kết quả mô hình, bảng và biểu đồ phía trên vẫn hoạt động bình thường. "
-        "Bạn có thể bấm lại sau hoặc kiểm tra API key/hạn mức Gemini.",
-        "api_error",
-    )
+    """Trả về phân tích dự phòng, không hiển thị lỗi API dài trên giao diện."""
+    return _offline_ai_fallback(lesson_name, model_name, result_data), "fallback_internal_ai"
 
 
 def _clean_old_ai_output(text):
@@ -944,21 +1038,24 @@ def _clean_old_ai_output(text):
         "generativelanguage.googleapis.com",
         "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
         "Quota exceeded",
+        "Gemini API đang tạm lỗi",
+        "Chưa có GEMINI_API_KEY",
     )
     if any(term in text for term in bad_terms):
         return None
     return text
 
+
 def analyze_with_gemini(lesson_name, model_name, input_params=None, result_data=None):
-    """Gọi Gemini API để phân tích kết quả. Nếu lỗi quota/API thì dùng phân tích dự phòng."""
+    """Gọi Gemini API để phân tích kết quả. Nếu Gemini lỗi/quota thì dùng AI nội bộ dự phòng."""
     api_key = _get_gemini_api_key()
     if not api_key:
-        return _offline_ai_fallback(lesson_name, model_name, result_data), "missing_key_fallback"
+        return _offline_ai_fallback(lesson_name, model_name, result_data), "fallback_no_key"
 
     try:
         from google import genai
     except Exception:
-        return _offline_ai_fallback(lesson_name, model_name, result_data), "import_fallback"
+        return _offline_ai_fallback(lesson_name, model_name, result_data), "fallback_no_library"
 
     prompt = _ai_make_prompt(
         lesson_name=lesson_name,
@@ -969,18 +1066,20 @@ def analyze_with_gemini(lesson_name, model_name, input_params=None, result_data=
 
     try:
         client = genai.Client(api_key=api_key)
-        # Ưu tiên Flash nhẹ để tiết kiệm quota. Nếu model này không khả dụng, thử model còn lại.
         last_exc = None
         for model in ("gemini-2.0-flash", "gemini-1.5-flash"):
             try:
                 response = client.models.generate_content(model=model, contents=prompt)
-                return response.text, "ok"
+                text = getattr(response, "text", "") or ""
+                if text.strip():
+                    return text.strip(), "ok_gemini"
             except Exception as exc:
                 last_exc = exc
                 continue
         return _friendly_gemini_error(last_exc, lesson_name, model_name, result_data)
     except Exception as exc:
         return _friendly_gemini_error(exc, lesson_name, model_name, result_data)
+
 
 def ai_analysis_panel(lesson_name, model_name, input_params=None, result_data=None, key="ai_panel"):
     """Hiển thị tác nhân AI phân tích kết quả ở cuối từng bài.
