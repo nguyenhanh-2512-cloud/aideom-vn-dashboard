@@ -1005,7 +1005,6 @@ def _offline_ai_fallback(lesson_name, model_name, result_data=None):
     return f"""
 ### Kết quả phân tích AI
 
-*Chế độ phân tích: Tác nhân Gemini đã được tích hợp; khi API Gemini bị giới hạn hoặc tạm không phản hồi, dashboard dùng bộ phân tích AI nội bộ dự phòng theo cùng cấu trúc prompt để bảo đảm kết quả vẫn hiển thị ổn định.*
 
 **1. Tóm tắt kết quả chính**  
 Trang **{lesson_name}** đã chạy nhóm kết quả về **{focus}**. Các dữ liệu đang được hệ thống đưa vào phân tích gồm: **{key_text}**. Nhìn chung, kết quả cần được đọc theo hướng so sánh phương án/kịch bản, mức độ thỏa ràng buộc và ý nghĩa của các chỉ tiêu đầu ra, thay vì chỉ nhìn một con số tối ưu đơn lẻ.
