@@ -3916,8 +3916,6 @@ def _b4_solve_scipy(
         D0[r] + gamma*x_D[r] <= M
         D0[r] + gamma*x_D[r] >= lam*M
     """
-    show_assignment_structure(4)
-
     regions, items, beta, D0 = region_beta_matrix()
 
     n_x = 24
@@ -4133,23 +4131,18 @@ def page_4():
     st.markdown("## 4.2. Mô hình toán học")
 
     st.latex(
-        r"\max Z=\sum_{r=1}^{6}\sum_{j\in\{I,D,AI,H\}}\beta_{j,r}x_{j,r}"
-    )
-    st.latex(
-        r"\sum_r\sum_jx_{j,r}\leq 50{,}000"
-    )
-    st.latex(
-        r"5{,}000\leq\sum_jx_{j,r}\leq12{,}000,\quad\forall r"
-    )
-    st.latex(
-        r"\sum_rx_{H,r}\geq12{,}000"
-    )
-    st.latex(
-        r"D_r+\gamma x_{D,r}\geq\lambda M,\quad"
-        r"D_r+\gamma x_{D,r}\leq M"
-    )
-    st.latex(
-        r"\gamma=0.002,\quad\lambda=0.70,\quad x_{j,r}\geq0"
+        r"""
+        \begin{aligned}
+        \max \; Z &= \sum_{r=1}^{6}\sum_{j\in\{I,D,AI,H\}} \beta_{j,r}x_{j,r} \\
+        \text{s.t.}\quad
+        \sum_{r=1}^{6}\sum_{j\in\{I,D,AI,H\}} x_{j,r} &\leq 50{,}000 \\
+        5{,}000 \leq \sum_{j\in\{I,D,AI,H\}} x_{j,r} &\leq 12{,}000, \quad \forall r \\
+        \sum_{r=1}^{6} x_{H,r} &\geq 12{,}000 \\
+        D_r + \gamma x_{D,r} &\leq M, \quad \forall r \\
+        D_r + \gamma x_{D,r} &\geq \lambda M, \quad \forall r \\
+        x_{j,r} &\geq 0, \quad \gamma=0.002, \; \lambda=0.70
+        \end{aligned}
+        """
     )
 
     # =====================================================
@@ -4963,8 +4956,6 @@ def _b5_check_vector(selection, df, budget=80000.0, budget_12=40000.0, force_p1_
 
 def _b5_solve_enumeration(budget=80000.0, budget_12=40000.0, risk_adjusted=False, force_p1_p2=False, keep_exclusion=True):
     """Giải MIP bằng vét cạn 2^15 tổ hợp để không phụ thuộc solver ngoài."""
-    show_assignment_structure(5)
-
     df = _b5_project_table()
     objective_col = "Lợi ích kỳ vọng" if risk_adjusted else "Lợi ích NPV"
     values = df[objective_col].to_numpy(dtype=float)
