@@ -2,6 +2,8 @@
 import itertools
 import os
 import json
+import re
+import re
 import base64
 from pathlib import Path
 
@@ -1029,9 +1031,14 @@ def _friendly_gemini_error(exc, lesson_name, model_name, result_data=None):
 
 
 def _clean_old_ai_output(text):
-    """Xóa các lỗi API quá dài đã lưu trong session_state từ phiên bản cũ."""
+    """Dọn nội dung AI cũ đã lưu trong session_state.
+
+    Không hiển thị lỗi API/quota quá dài và tự xóa dòng chú thích chế độ
+    phân tích còn lưu từ bản cũ, nhưng vẫn giữ nguyên phần kết quả phía dưới.
+    """
     if not isinstance(text, str):
         return text
+
     bad_terms = (
         "RESOURCE_EXHAUSTED",
         "generativelanguage.googleapis.com",
@@ -1042,7 +1049,18 @@ def _clean_old_ai_output(text):
     )
     if any(term in text for term in bad_terms):
         return None
-    return text
+
+    # Xóa riêng ghi chú chế độ phân tích còn lưu trong session cũ.
+    old_prefix = "Chế độ" + " phân tích:"
+    cleaned_lines = []
+    for line in text.splitlines():
+        if old_prefix.lower() in line.lower():
+            continue
+        cleaned_lines.append(line)
+
+    cleaned = "\n".join(cleaned_lines)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    return cleaned
 
 
 def analyze_with_gemini(lesson_name, model_name, input_params=None, result_data=None):
