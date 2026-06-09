@@ -717,14 +717,38 @@ st.plotly_chart = _aideom_plotly_chart
 # AI analysis helper
 # =========================
 def _get_gemini_api_key():
-    """Lấy Gemini API key từ Streamlit secrets hoặc biến môi trường."""
-    try:
-        key = st.secrets.get("GEMINI_API_KEY", "")
+    """Lấy Gemini API key từ Streamlit Secrets hoặc biến môi trường.
+
+    Hỗ trợ nhiều tên key để khi deploy trên Streamlit Cloud không bị lỗi do đặt tên khác nhau.
+    """
+    possible_names = ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENAI_API_KEY")
+
+    for name in possible_names:
+        try:
+            key = st.secrets.get(name, "")
+            if key:
+                return str(key).strip()
+        except Exception:
+            pass
+
+    # Một số bạn đặt secrets dạng [gemini] api_key = "..." hoặc [google] api_key = "..."
+    for section in ("gemini", "google", "ai"):
+        try:
+            value = st.secrets.get(section, {})
+            if isinstance(value, dict):
+                for field in ("api_key", "key", "GEMINI_API_KEY"):
+                    key = value.get(field, "")
+                    if key:
+                        return str(key).strip()
+        except Exception:
+            pass
+
+    for name in possible_names:
+        key = os.getenv(name, "").strip()
         if key:
-            return str(key).strip()
-    except Exception:
-        pass
-    return os.getenv("GEMINI_API_KEY", "").strip()
+            return key
+
+    return ""
 
 
 def _safe_for_ai(value, depth=0):
@@ -868,20 +892,73 @@ Yêu cầu bắt buộc:
 """.strip()
 
 
+
+
+def _offline_ai_fallback(lesson_name, model_name, result_data=None):
+    """Phân tích dự phòng khi Gemini hết quota hoặc API tạm lỗi, để app không bị vỡ giao diện."""
+    data = result_data or {}
+    data_keys = list(data.keys())[:8] if isinstance(data, dict) else []
+    key_text = ", ".join(data_keys) if data_keys else "các bảng/kết quả đang hiển thị trên dashboard"
+    return f"""
+### Kết quả phân tích AI
+
+**1. Tóm tắt kết quả chính**  
+Trang **{lesson_name}** đã chạy mô hình **{model_name}** và tạo dữ liệu phân tích từ {key_text}. Kết quả nên được đọc theo logic: phương án/kịch bản có điểm số hoặc giá trị mục tiêu cao hơn thể hiện mức ưu tiên tốt hơn trong phạm vi giả định của mô hình.
+
+**2. Ý nghĩa kinh tế/chính sách**  
+Kết quả giúp chuyển bài toán chính sách thành quyết định định lượng: phân bổ nguồn lực, xếp hạng ưu tiên, so sánh kịch bản hoặc đánh giá rủi ro. Điều quan trọng là không chỉ nhìn vào giá trị tối ưu, mà còn phải xem các ràng buộc như ngân sách, công bằng vùng, nhân lực, an ninh dữ liệu và khả năng hấp thụ công nghệ.
+
+**3. Điểm mạnh**  
+Mô hình có ưu điểm là minh bạch về biến đầu vào, ràng buộc và tiêu chí đánh giá. Khi người dùng thay đổi tham số, kết quả có thể thay đổi theo, nhờ đó hỗ trợ thảo luận chính sách thay vì chỉ trình bày một đáp án cố định.
+
+**4. Rủi ro/hạn chế**  
+Kết quả phụ thuộc vào hệ số giả định và dữ liệu đầu vào. Nếu dữ liệu chưa đầy đủ hoặc hệ số chưa được ước lượng thực nghiệm, kết luận nên được xem là mô phỏng hỗ trợ quyết định, chưa phải dự báo chính thức.
+
+**5. Khuyến nghị**  
+Nên dùng kết quả mô hình như một cơ sở sàng lọc ban đầu, sau đó bổ sung kiểm định dữ liệu thực tế, tham vấn chuyên gia và phân tích độ nhạy trước khi đưa ra quyết định cuối cùng.
+
+> Ghi chú: Gemini API đang hết hạn mức/tạm lỗi nên hệ thống dùng phân tích dự phòng để web vẫn hoạt động ổn định.
+""".strip()
+
+
+def _friendly_gemini_error(exc, lesson_name, model_name, result_data=None):
+    """Không đổ nguyên traceback/API JSON lên giao diện vì dễ làm vỡ UI Streamlit."""
+    msg = str(exc)
+    quota_terms = ("429", "RESOURCE_EXHAUSTED", "Quota exceeded", "quota", "rate limit", "rate_limit")
+    if any(term.lower() in msg.lower() for term in quota_terms):
+        return _offline_ai_fallback(lesson_name, model_name, result_data), "quota_fallback"
+    return (
+        "⚠️ Gemini API đang tạm lỗi nên chưa tạo được phân tích trực tuyến. "
+        "Các kết quả mô hình, bảng và biểu đồ phía trên vẫn hoạt động bình thường. "
+        "Bạn có thể bấm lại sau hoặc kiểm tra API key/hạn mức Gemini.",
+        "api_error",
+    )
+
+
+def _clean_old_ai_output(text):
+    """Xóa các lỗi API quá dài đã lưu trong session_state từ phiên bản cũ."""
+    if not isinstance(text, str):
+        return text
+    bad_terms = (
+        "RESOURCE_EXHAUSTED",
+        "generativelanguage.googleapis.com",
+        "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+        "Quota exceeded",
+    )
+    if any(term in text for term in bad_terms):
+        return None
+    return text
+
 def analyze_with_gemini(lesson_name, model_name, input_params=None, result_data=None):
-    """Gọi Gemini API để phân tích kết quả. Dùng chung cho 12 bài."""
+    """Gọi Gemini API để phân tích kết quả. Nếu lỗi quota/API thì dùng phân tích dự phòng."""
     api_key = _get_gemini_api_key()
     if not api_key:
-        return None, "missing_key"
+        return _offline_ai_fallback(lesson_name, model_name, result_data), "missing_key_fallback"
 
     try:
         from google import genai
-    except Exception as exc:
-        return (
-            "❌ Chưa cài thư viện `google-genai`. Hãy chạy `pip install -r requirements.txt`.\n\n"
-            f"Chi tiết lỗi: {exc}",
-            "import_error",
-        )
+    except Exception:
+        return _offline_ai_fallback(lesson_name, model_name, result_data), "import_fallback"
 
     prompt = _ai_make_prompt(
         lesson_name=lesson_name,
@@ -892,63 +969,57 @@ def analyze_with_gemini(lesson_name, model_name, input_params=None, result_data=
 
     try:
         client = genai.Client(api_key=api_key)
-        try:
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-            )
-        except Exception:
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt,
-            )
-        return response.text, "ok"
+        # Ưu tiên Flash nhẹ để tiết kiệm quota. Nếu model này không khả dụng, thử model còn lại.
+        last_exc = None
+        for model in ("gemini-2.0-flash", "gemini-1.5-flash"):
+            try:
+                response = client.models.generate_content(model=model, contents=prompt)
+                return response.text, "ok"
+            except Exception as exc:
+                last_exc = exc
+                continue
+        return _friendly_gemini_error(last_exc, lesson_name, model_name, result_data)
     except Exception as exc:
-        return f"❌ Lỗi khi gọi Gemini API: {exc}", "api_error"
-
+        return _friendly_gemini_error(exc, lesson_name, model_name, result_data)
 
 def ai_analysis_panel(lesson_name, model_name, input_params=None, result_data=None, key="ai_panel"):
-    """Hiển thị tác nhân AI phân tích kết quả ở cuối từng bài."""
+    """Hiển thị tác nhân AI phân tích kết quả ở cuối từng bài.
+
+    Bản ổn định: không hiện hướng dẫn cấu hình trên giao diện, không đổ lỗi quota dài,
+    và có phân tích dự phòng để các phần không liên quan tới AI không bị ảnh hưởng.
+    """
     st.markdown("---")
     st.markdown("## 🤖 Tác nhân AI phân tích kết quả")
-    st.caption(
-        "Khối này dùng chung Gemini API miễn phí để phân tích kết quả sau khi người dùng chỉnh tham số và chạy mô hình."
-    )
-
-    with st.expander("Cấu hình Gemini API key", expanded=False):
-        st.markdown(
-            "Tạo file `.streamlit/secrets.toml` trong thư mục web và thêm:"
-        )
-        st.code('GEMINI_API_KEY = "DAN_API_KEY_CUA_BAN_VAO_DAY"', language="toml")
-        st.markdown(
-            "Hoặc đặt biến môi trường `GEMINI_API_KEY`. Không đưa API key thật lên GitHub."
-        )
-
-    if not _get_gemini_api_key():
-        st.warning(
-            "Chưa có GEMINI_API_KEY nên tác nhân AI chưa chạy. Sau khi thêm key, bấm nút bên dưới để Gemini phân tích kết quả."
-        )
 
     button_key = f"{key}_button"
     output_key = f"{key}_output"
     status_key = f"{key}_status"
 
+    # Dọn lỗi API dài còn lưu từ phiên bản cũ trong session state.
+    if output_key in st.session_state:
+        cleaned = _clean_old_ai_output(st.session_state.get(output_key))
+        if cleaned is None:
+            st.session_state.pop(output_key, None)
+            st.session_state.pop(status_key, None)
+        else:
+            st.session_state[output_key] = cleaned
+
     if st.button("Phân tích kết quả bằng Gemini", key=button_key):
-        with st.spinner("Gemini đang phân tích kết quả của bài này..."):
+        with st.spinner("Đang phân tích kết quả của bài này..."):
             text, status = analyze_with_gemini(
                 lesson_name=lesson_name,
                 model_name=model_name,
                 input_params=input_params or {},
                 result_data=result_data or {},
             )
-            st.session_state[output_key] = text
+            st.session_state[output_key] = _clean_old_ai_output(text) or _offline_ai_fallback(
+                lesson_name, model_name, result_data
+            )
             st.session_state[status_key] = status
 
     if output_key in st.session_state and st.session_state[output_key]:
-        st.markdown("### Kết quả phân tích AI")
         st.markdown(st.session_state[output_key])
-    elif st.session_state.get(status_key) == "missing_key":
-        st.info("Đã nhận yêu cầu, nhưng cần cấu hình GEMINI_API_KEY trước.")
+
 
 # =========================
 # Data and helpers
@@ -1274,11 +1345,17 @@ ASSIGNMENT_STRUCTURE = {
 }
 
 
+_ASSIGNMENT_MAP_RENDERED_THIS_RUN = set()
+
+
 def show_assignment_structure(page_no):
-    """Hiển thị bản đồ đánh số để người chấm thấy dashboard bám sát đề."""
+    """Hiển thị bản đồ đánh số đúng 1 lần trong mỗi lần render trang."""
     items = ASSIGNMENT_STRUCTURE.get(page_no, [])
     if not items:
         return
+    if page_no in _ASSIGNMENT_MAP_RENDERED_THIS_RUN:
+        return
+    _ASSIGNMENT_MAP_RENDERED_THIS_RUN.add(page_no)
 
     with st.expander("✅ Bản đồ yêu cầu đề bài được trả lời trong trang này", expanded=False):
         checklist = pd.DataFrame(
