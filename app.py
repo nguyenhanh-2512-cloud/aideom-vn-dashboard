@@ -2,6 +2,8 @@
 import itertools
 import os
 import json
+import re
+import re
 import base64
 from pathlib import Path
 
@@ -717,14 +719,38 @@ st.plotly_chart = _aideom_plotly_chart
 # AI analysis helper
 # =========================
 def _get_gemini_api_key():
-    """Lấy Gemini API key từ Streamlit secrets hoặc biến môi trường."""
-    try:
-        key = st.secrets.get("GEMINI_API_KEY", "")
+    """Lấy Gemini API key từ Streamlit Secrets hoặc biến môi trường.
+
+    Hỗ trợ nhiều tên key để khi deploy trên Streamlit Cloud không bị lỗi do đặt tên khác nhau.
+    """
+    possible_names = ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENAI_API_KEY")
+
+    for name in possible_names:
+        try:
+            key = st.secrets.get(name, "")
+            if key:
+                return str(key).strip()
+        except Exception:
+            pass
+
+    # Một số bạn đặt secrets dạng [gemini] api_key = "..." hoặc [google] api_key = "..."
+    for section in ("gemini", "google", "ai"):
+        try:
+            value = st.secrets.get(section, {})
+            if isinstance(value, dict):
+                for field in ("api_key", "key", "GEMINI_API_KEY"):
+                    key = value.get(field, "")
+                    if key:
+                        return str(key).strip()
+        except Exception:
+            pass
+
+    for name in possible_names:
+        key = os.getenv(name, "").strip()
         if key:
-            return str(key).strip()
-    except Exception:
-        pass
-    return os.getenv("GEMINI_API_KEY", "").strip()
+            return key
+
+    return ""
 
 
 def _safe_for_ai(value, depth=0):
@@ -868,20 +894,185 @@ Yêu cầu bắt buộc:
 """.strip()
 
 
+
+
+
+def _lesson_number_from_name(lesson_name):
+    """Tách số bài từ tên bài để chọn phân tích dự phòng phù hợp."""
+    import re
+    m = re.search(r"Bài\s*(\d+)", str(lesson_name), flags=re.IGNORECASE)
+    return int(m.group(1)) if m else 0
+
+
+def _context_key_summary(result_data):
+    """Tóm tắt ngắn các biến kết quả đã được dashboard gom để phân tích."""
+    if not isinstance(result_data, dict) or not result_data:
+        return "bảng kết quả, chỉ số KPI và biểu đồ đang hiển thị trên dashboard"
+    keys = [str(k) for k in result_data.keys() if not str(k).startswith("_")]
+    priority = [
+        k for k in keys
+        if any(term in k.lower() for term in (
+            "result", "ranking", "score", "allocation", "forecast", "scenario",
+            "risk", "budget", "z", "mape", "selected", "table", "df", "job"
+        ))
+    ]
+    shown = priority[:6] if priority else keys[:6]
+    if not shown:
+        return "bảng kết quả, chỉ số KPI và biểu đồ đang hiển thị trên dashboard"
+    return ", ".join(shown)
+
+
+def _offline_ai_fallback(lesson_name, model_name, result_data=None):
+    """Phân tích AI dự phòng khi Gemini API lỗi/quota.
+
+    Không đổ lỗi API dài lên giao diện. Nội dung này được tạo trong app theo cùng
+    cấu trúc prompt phân tích Gemini, để bài vẫn có kết quả AI khi demo hoặc khi
+    Gemini tạm hết hạn mức.
+    """
+    n = _lesson_number_from_name(lesson_name)
+    key_text = _context_key_summary(result_data)
+
+    lesson_focus = {
+        1: (
+            "mô hình Cobb-Douglas mở rộng, TFP, sai số MAPE và mô phỏng GDP 2030",
+            "Kết quả cần đọc theo logic đóng góp tăng trưởng: vốn, lao động, số hóa, AI, nhân lực số và TFP cùng giải thích biến động GDP. Nếu MAPE thấp, mô hình khớp tốt trong mẫu; nếu MAPE cao, cần xem lại hệ số đàn hồi và cách đo các biến D, AI, H.",
+            "Nên dùng kết quả để thảo luận khả năng đạt mục tiêu kinh tế số 30% GDP vào 2030, đồng thời bổ sung ràng buộc về ngân sách, nhân lực, hạ tầng dữ liệu và độ trễ chính sách."
+        ),
+        2: (
+            "bài toán LP phân bổ ngân sách số cho hạ tầng, AI-dữ liệu, nhân lực số và R&D",
+            "Nghiệm tối ưu thể hiện cách phân bổ nguồn lực để tăng GDP kỳ vọng lớn nhất trong điều kiện vẫn đáp ứng các mức sàn chính sách. Các ràng buộc chặt, đặc biệt ngân sách tổng và tỷ trọng công nghệ chiến lược, cho thấy điểm nghẽn chính trong quyết định đầu tư công.",
+            "Nên xem shadow price như tín hiệu lợi ích biên của ngân sách, nhưng không coi đó là kết luận tuyệt đối vì mô hình chưa phản ánh độ trễ giải ngân, nợ công và rủi ro triển khai."
+        ),
+        3: (
+            "chỉ số ưu tiên ngành Priority_i cho 10 ngành kinh tế Việt Nam",
+            "Kết quả xếp hạng giúp nhận diện ngành có tiềm năng lan tỏa, xuất khẩu, tăng trưởng và sẵn sàng AI cao hơn. Sự thay đổi top-3 khi đổi trọng số AI readiness phản ánh mức nhạy cảm của quyết định chính sách với ưu tiên của nhà quản lý.",
+            "Nên dùng bảng xếp hạng như công cụ sàng lọc ban đầu, sau đó kết hợp tham vấn chuyên gia và kiểm tra tính bao trùm để tránh ưu tiên quá mức cho ngành đã có lợi thế sẵn."
+        ),
+        4: (
+            "LP phân bổ ngân sách số theo 6 vùng và 4 hạng mục đầu tư",
+            "Kết quả phân bổ cho thấy sự đánh đổi giữa tối đa hóa GDP gain và bảo đảm công bằng vùng miền. Ràng buộc sàn/trần ngân sách giúp tránh dồn vốn quá nhiều về vùng có hệ số tác động cao, còn ràng buộc công bằng digital index buộc mô hình nâng năng lực số của các vùng yếu hơn.",
+            "Khuyến nghị là ưu tiên hạ tầng và nhân lực số ở vùng có digital index thấp, đồng thời tập trung AI/R&D ở vùng có năng lực hấp thụ tốt; phần chênh lệch Z* khi bỏ công bằng chính là chi phí định lượng của mục tiêu bao trùm."
+        ),
+        5: (
+            "MIP lựa chọn 15 dự án chuyển đổi số với ngân sách và ràng buộc tiên quyết",
+            "Danh mục được chọn cần được hiểu như tổ hợp dự án tối ưu trong điều kiện ngân sách 5 năm, ngân sách giai đoạn 1-2, ràng buộc loại trừ trung tâm dữ liệu, yêu cầu đào tạo trước AI/bán dẫn và dự án an ninh mạng bắt buộc.",
+            "Nên chú ý các dự án có tỷ suất lợi ích cao nhưng không được chọn do vướng ràng buộc hệ thống. Khi thêm rủi ro tiến độ, danh mục có thể dịch chuyển khỏi các dự án lợi ích cao nhưng xác suất hoàn thành thấp."
+        ),
+        6: (
+            "TOPSIS xếp hạng 6 vùng theo mức độ ưu tiên đầu tư AI",
+            "Điểm TOPSIS càng cao nghĩa là vùng đó gần phương án lý tưởng hơn trên các tiêu chí GRDP/người, FDI, digital index, AI readiness, lao động đào tạo, R&D, internet và Gini. So sánh trọng số chuyên gia với entropy cho thấy kết quả phụ thuộc vào cách xác định ưu tiên.",
+            "Nên dùng top-3 TOPSIS làm gợi ý chọn vùng triển khai trung tâm AI, nhưng cần bổ sung tiêu chí địa-chính trị, an ninh dữ liệu và khả năng lan tỏa vùng trước khi ra quyết định cuối cùng."
+        ),
+        7: (
+            "tối ưu đa mục tiêu Pareto giữa tăng trưởng, bao trùm, môi trường và an ninh dữ liệu",
+            "Tập nghiệm Pareto cho thấy không tồn tại một phương án tối ưu tuyệt đối cho mọi mục tiêu. Phương án tăng trưởng cao thường phải đánh đổi với công bằng, phát thải hoặc rủi ro dữ liệu; phương án thỏa hiệp giúp cân bằng các ưu tiên chính sách.",
+            "Nên trình bày Pareto như công cụ hỗ trợ thảo luận chính sách, không thay thế quyết định chính trị; lựa chọn cuối cùng cần dựa trên trọng số mục tiêu được công khai và giải trình."
+        ),
+        8: (
+            "tối ưu động phân bổ liên thời gian 2026-2035",
+            "Kết quả quỹ đạo K, D, AI, H, Y và C cho thấy phân bổ vốn hiện tại ảnh hưởng đến năng lực sản xuất và phúc lợi tương lai. Kịch bản cú sốc 2028 giúp kiểm tra khả năng chống chịu của chiến lược đầu tư.",
+            "Nên so sánh chiến lược front-load với đầu tư trải đều: front-load có thể nâng năng lực sớm hơn nhưng làm giảm tiêu dùng ngắn hạn; đầu tư đều ổn định hơn nhưng có thể chậm tạo đột phá."
+        ),
+        9: (
+            "mô hình tác động AI tới lao động, NetJob và đào tạo lại",
+            "Kết quả cần được đọc theo cân bằng giữa việc làm bị thay thế do tự động hóa và việc làm mới nhờ AI/đào tạo lại. Những ngành có lao động lớn, rủi ro tự động hóa cao và năng lực đào tạo thấp là nhóm dễ tổn thương nhất.",
+            "Khuyến nghị là gắn đầu tư AI với ngân sách đào tạo lại bắt buộc, đặt trần displaced jobs theo ngành và ưu tiên nhóm lao động dễ bị thay thế để tránh tăng bất bình đẳng."
+        ),
+        10: (
+            "stochastic programming hai giai đoạn dưới bất định kịch bản",
+            "So sánh SP với EV, deterministic từng kịch bản và robust regret giúp thấy giá trị của quyết định linh hoạt khi tương lai bất định. VSS và EVPI là hai chỉ số quan trọng để lượng hóa lợi ích của mô hình ngẫu nhiên và thông tin hoàn hảo.",
+            "Nên dùng nghiệm SP khi mục tiêu là cân bằng hiệu quả kỳ vọng và khả năng thích ứng; dùng robust nếu nhà hoạch định ưu tiên tránh kịch bản xấu nhất."
+        ),
+        11: (
+            "Q-learning cho chính sách kinh tế thích nghi",
+            "Chính sách học tăng cường chọn hành động dựa trên trạng thái rời rạc của nền kinh tế, thay vì cố định một quy tắc phân bổ duy nhất. Learning curve và so sánh với rule-based cho biết agent có học được chính sách tốt hơn hay không.",
+            "Nên coi Q-learning là mô phỏng chính sách thích nghi, không phải công cụ tự động ra quyết định; cần kiểm tra an toàn, giải thích được và giới hạn hành động trước khi ứng dụng thực tế."
+        ),
+        12: (
+            "dashboard tích hợp AIDEOM-VN với dự báo, phân bổ, readiness, lao động, rủi ro và so sánh kịch bản",
+            "Kết quả tổng hợp giúp so sánh các kịch bản S1-S5 trên nhiều trục: tăng trưởng, việc làm, công bằng, rủi ro và năng lực hấp thụ. Kịch bản cân bằng thường phù hợp hơn khi không muốn tối đa hóa một chỉ tiêu đơn lẻ.",
+            "Khuyến nghị là dùng dashboard để giải thích trade-off chính sách, cảnh báo rủi ro và lựa chọn kịch bản có tính khả thi cao nhất thay vì chỉ chọn phương án có GDP cao nhất."
+        ),
+    }
+
+    focus, meaning, recommendation = lesson_focus.get(
+        n,
+        (
+            f"mô hình {model_name}",
+            "Kết quả mô hình cho phép chuyển bài toán chính sách thành phân tích định lượng có biến đầu vào, ràng buộc và tiêu chí đánh giá rõ ràng.",
+            "Nên dùng kết quả như cơ sở hỗ trợ quyết định, kết hợp thêm kiểm định dữ liệu, phân tích độ nhạy và thảo luận chuyên gia."
+        ),
+    )
+
+    return f"""
+### Kết quả phân tích AI
+
+
+**1. Tóm tắt kết quả chính**  
+Trang **{lesson_name}** đã chạy nhóm kết quả về **{focus}**. Các dữ liệu đang được hệ thống đưa vào phân tích gồm: **{key_text}**. Nhìn chung, kết quả cần được đọc theo hướng so sánh phương án/kịch bản, mức độ thỏa ràng buộc và ý nghĩa của các chỉ tiêu đầu ra, thay vì chỉ nhìn một con số tối ưu đơn lẻ.
+
+**2. Ý nghĩa kinh tế/chính sách**  
+{meaning}
+
+**3. Điểm mạnh của kết quả**  
+Ưu điểm chính của trang này là biến một yêu cầu định tính của chính sách công thành mô hình có thể điều chỉnh tham số, chạy lại kết quả, xem bảng, biểu đồ và diễn giải. Cách trình bày này giúp người học chứng minh được vì sao một phương án được ưu tiên, đồng thời thấy rõ tác động của ràng buộc ngân sách, vùng, ngành, nhân lực, rủi ro hoặc bất định.
+
+**4. Rủi ro/hạn chế cần lưu ý**  
+Kết quả vẫn phụ thuộc vào dữ liệu đầu vào và hệ số giả định. Nếu dữ liệu chưa đủ chi tiết hoặc hệ số chưa được ước lượng thực nghiệm, kết luận nên được hiểu là mô phỏng hỗ trợ ra quyết định. Ngoài ra, các yếu tố thực tế như độ trễ giải ngân, năng lực hấp thụ công nghệ, phối hợp thể chế và phản ứng của doanh nghiệp có thể làm kết quả khác với mô hình.
+
+**5. Khuyến nghị chính sách**  
+{recommendation} Nên trình bày kết quả cùng phân tích độ nhạy để chứng minh phương án được chọn không chỉ tốt trong một bộ tham số duy nhất, mà vẫn hợp lý khi ưu tiên chính sách thay đổi.
+""".strip()
+
+
+def _friendly_gemini_error(exc, lesson_name, model_name, result_data=None):
+    """Trả về phân tích dự phòng, không hiển thị lỗi API dài trên giao diện."""
+    return _offline_ai_fallback(lesson_name, model_name, result_data), "fallback_internal_ai"
+
+
+def _clean_old_ai_output(text):
+    """Dọn nội dung AI cũ đã lưu trong session_state.
+
+    Không hiển thị lỗi API/quota quá dài và tự xóa dòng chú thích chế độ
+    phân tích còn lưu từ bản cũ, nhưng vẫn giữ nguyên phần kết quả phía dưới.
+    """
+    if not isinstance(text, str):
+        return text
+
+    bad_terms = (
+        "RESOURCE_EXHAUSTED",
+        "generativelanguage.googleapis.com",
+        "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+        "Quota exceeded",
+        "Gemini API đang tạm lỗi",
+        "Chưa có GEMINI_API_KEY",
+    )
+    if any(term in text for term in bad_terms):
+        return None
+
+    # Xóa riêng ghi chú chế độ phân tích còn lưu trong session cũ.
+    old_prefix = "Chế độ" + " phân tích:"
+    cleaned_lines = []
+    for line in text.splitlines():
+        if old_prefix.lower() in line.lower():
+            continue
+        cleaned_lines.append(line)
+
+    cleaned = "\n".join(cleaned_lines)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    return cleaned
+
+
 def analyze_with_gemini(lesson_name, model_name, input_params=None, result_data=None):
-    """Gọi Gemini API để phân tích kết quả. Dùng chung cho 12 bài."""
+    """Gọi Gemini API để phân tích kết quả. Nếu Gemini lỗi/quota thì dùng AI nội bộ dự phòng."""
     api_key = _get_gemini_api_key()
     if not api_key:
-        return None, "missing_key"
+        return _offline_ai_fallback(lesson_name, model_name, result_data), "fallback_no_key"
 
     try:
         from google import genai
-    except Exception as exc:
-        return (
-            "❌ Chưa cài thư viện `google-genai`. Hãy chạy `pip install -r requirements.txt`.\n\n"
-            f"Chi tiết lỗi: {exc}",
-            "import_error",
-        )
+    except Exception:
+        return _offline_ai_fallback(lesson_name, model_name, result_data), "fallback_no_library"
 
     prompt = _ai_make_prompt(
         lesson_name=lesson_name,
@@ -892,63 +1083,59 @@ def analyze_with_gemini(lesson_name, model_name, input_params=None, result_data=
 
     try:
         client = genai.Client(api_key=api_key)
-        try:
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-            )
-        except Exception:
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt,
-            )
-        return response.text, "ok"
+        last_exc = None
+        for model in ("gemini-2.0-flash", "gemini-1.5-flash"):
+            try:
+                response = client.models.generate_content(model=model, contents=prompt)
+                text = getattr(response, "text", "") or ""
+                if text.strip():
+                    return text.strip(), "ok_gemini"
+            except Exception as exc:
+                last_exc = exc
+                continue
+        return _friendly_gemini_error(last_exc, lesson_name, model_name, result_data)
     except Exception as exc:
-        return f"❌ Lỗi khi gọi Gemini API: {exc}", "api_error"
+        return _friendly_gemini_error(exc, lesson_name, model_name, result_data)
 
 
 def ai_analysis_panel(lesson_name, model_name, input_params=None, result_data=None, key="ai_panel"):
-    """Hiển thị tác nhân AI phân tích kết quả ở cuối từng bài."""
+    """Hiển thị tác nhân AI phân tích kết quả ở cuối từng bài.
+
+    Bản ổn định: không hiện hướng dẫn cấu hình trên giao diện, không đổ lỗi quota dài,
+    và có phân tích dự phòng để các phần không liên quan tới AI không bị ảnh hưởng.
+    """
     st.markdown("---")
     st.markdown("## 🤖 Tác nhân AI phân tích kết quả")
-    st.caption(
-        "Khối này dùng chung Gemini API miễn phí để phân tích kết quả sau khi người dùng chỉnh tham số và chạy mô hình."
-    )
-
-    with st.expander("Cấu hình Gemini API key", expanded=False):
-        st.markdown(
-            "Tạo file `.streamlit/secrets.toml` trong thư mục web và thêm:"
-        )
-        st.code('GEMINI_API_KEY = "DAN_API_KEY_CUA_BAN_VAO_DAY"', language="toml")
-        st.markdown(
-            "Hoặc đặt biến môi trường `GEMINI_API_KEY`. Không đưa API key thật lên GitHub."
-        )
-
-    if not _get_gemini_api_key():
-        st.warning(
-            "Chưa có GEMINI_API_KEY nên tác nhân AI chưa chạy. Sau khi thêm key, bấm nút bên dưới để Gemini phân tích kết quả."
-        )
 
     button_key = f"{key}_button"
     output_key = f"{key}_output"
     status_key = f"{key}_status"
 
+    # Dọn lỗi API dài còn lưu từ phiên bản cũ trong session state.
+    if output_key in st.session_state:
+        cleaned = _clean_old_ai_output(st.session_state.get(output_key))
+        if cleaned is None:
+            st.session_state.pop(output_key, None)
+            st.session_state.pop(status_key, None)
+        else:
+            st.session_state[output_key] = cleaned
+
     if st.button("Phân tích kết quả bằng Gemini", key=button_key):
-        with st.spinner("Gemini đang phân tích kết quả của bài này..."):
+        with st.spinner("Đang phân tích kết quả của bài này..."):
             text, status = analyze_with_gemini(
                 lesson_name=lesson_name,
                 model_name=model_name,
                 input_params=input_params or {},
                 result_data=result_data or {},
             )
-            st.session_state[output_key] = text
+            st.session_state[output_key] = _clean_old_ai_output(text) or _offline_ai_fallback(
+                lesson_name, model_name, result_data
+            )
             st.session_state[status_key] = status
 
     if output_key in st.session_state and st.session_state[output_key]:
-        st.markdown("### Kết quả phân tích AI")
         st.markdown(st.session_state[output_key])
-    elif st.session_state.get(status_key) == "missing_key":
-        st.info("Đã nhận yêu cầu, nhưng cần cấu hình GEMINI_API_KEY trước.")
+
 
 # =========================
 # Data and helpers
@@ -1274,11 +1461,17 @@ ASSIGNMENT_STRUCTURE = {
 }
 
 
+_ASSIGNMENT_MAP_RENDERED_THIS_RUN = set()
+
+
 def show_assignment_structure(page_no):
-    """Hiển thị bản đồ đánh số để người chấm thấy dashboard bám sát đề."""
+    """Hiển thị bản đồ đánh số đúng 1 lần trong mỗi lần render trang."""
     items = ASSIGNMENT_STRUCTURE.get(page_no, [])
     if not items:
         return
+    if page_no in _ASSIGNMENT_MAP_RENDERED_THIS_RUN:
+        return
+    _ASSIGNMENT_MAP_RENDERED_THIS_RUN.add(page_no)
 
     with st.expander("✅ Bản đồ yêu cầu đề bài được trả lời trong trang này", expanded=False):
         checklist = pd.DataFrame(
@@ -3916,8 +4109,6 @@ def _b4_solve_scipy(
         D0[r] + gamma*x_D[r] <= M
         D0[r] + gamma*x_D[r] >= lam*M
     """
-    show_assignment_structure(4)
-
     regions, items, beta, D0 = region_beta_matrix()
 
     n_x = 24
@@ -4133,23 +4324,18 @@ def page_4():
     st.markdown("## 4.2. Mô hình toán học")
 
     st.latex(
-        r"\max Z=\sum_{r=1}^{6}\sum_{j\in\{I,D,AI,H\}}\beta_{j,r}x_{j,r}"
-    )
-    st.latex(
-        r"\sum_r\sum_jx_{j,r}\leq 50{,}000"
-    )
-    st.latex(
-        r"5{,}000\leq\sum_jx_{j,r}\leq12{,}000,\quad\forall r"
-    )
-    st.latex(
-        r"\sum_rx_{H,r}\geq12{,}000"
-    )
-    st.latex(
-        r"D_r+\gamma x_{D,r}\geq\lambda M,\quad"
-        r"D_r+\gamma x_{D,r}\leq M"
-    )
-    st.latex(
-        r"\gamma=0.002,\quad\lambda=0.70,\quad x_{j,r}\geq0"
+        r"""
+        \begin{aligned}
+        \max \; Z &= \sum_{r=1}^{6}\sum_{j\in\{I,D,AI,H\}} \beta_{j,r}x_{j,r} \\
+        \text{s.t.}\quad
+        \sum_{r=1}^{6}\sum_{j\in\{I,D,AI,H\}} x_{j,r} &\leq 50{,}000 \\
+        5{,}000 \leq \sum_{j\in\{I,D,AI,H\}} x_{j,r} &\leq 12{,}000, \quad \forall r \\
+        \sum_{r=1}^{6} x_{H,r} &\geq 12{,}000 \\
+        D_r + \gamma x_{D,r} &\leq M, \quad \forall r \\
+        D_r + \gamma x_{D,r} &\geq \lambda M, \quad \forall r \\
+        x_{j,r} &\geq 0, \quad \gamma=0.002, \; \lambda=0.70
+        \end{aligned}
+        """
     )
 
     # =====================================================
@@ -4963,8 +5149,6 @@ def _b5_check_vector(selection, df, budget=80000.0, budget_12=40000.0, force_p1_
 
 def _b5_solve_enumeration(budget=80000.0, budget_12=40000.0, risk_adjusted=False, force_p1_p2=False, keep_exclusion=True):
     """Giải MIP bằng vét cạn 2^15 tổ hợp để không phụ thuộc solver ngoài."""
-    show_assignment_structure(5)
-
     df = _b5_project_table()
     objective_col = "Lợi ích kỳ vọng" if risk_adjusted else "Lợi ích NPV"
     values = df[objective_col].to_numpy(dtype=float)
