@@ -5740,7 +5740,7 @@ def page_6():
     st.markdown("### Bước 3. Nghiệm lý tưởng")
     st.latex(
         r"A^*=\{v_1^*,...,v_n^*\},"
-        r"\qquad"
+        r"\qquad "
         r"A^-=\{v_1^-,...,v_n^-\}"
     )
 
@@ -5748,7 +5748,7 @@ def page_6():
     st.latex(
         r"S_i^*="
         r"\sqrt{\sum_j(v_{ij}-v_j^*)^2},"
-        r"\qquad"
+        r"\qquad "
         r"S_i^-="
         r"\sqrt{\sum_j(v_{ij}-v_j^-)^2}"
     )
