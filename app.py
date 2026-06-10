@@ -3310,16 +3310,16 @@ print(res_priority_H.x)""",
     scipy_budget_shadow = -float(base_res.ineqlin.marginals[0])
 
     with st.expander(
-        "a) Ngân sách tăng thêm 1 đơn vị thì GDP kỳ vọng tăng bao nhiêu?",
+        "a) Khi ngân sách tổng tăng thêm 1 tỷ VND, GDP kỳ vọng tăng thêm bao nhiêu?",
         expanded=True,
     ):
         st.markdown(
-            f"Giá đối ngẫu của ràng buộc ngân sách tổng theo nghiệm HiGHS là khoảng "
-            f"**{scipy_budget_shadow:.2f}**. Nghĩa là, trong phạm vi độ nhạy hiện tại, "
-            f"tăng thêm **1 nghìn tỷ VND** ngân sách có thể làm giá trị mục tiêu tăng "
-            f"xấp xỉ **{scipy_budget_shadow:.2f} nghìn tỷ VND**. Đây là lợi ích biên "
-            "theo mô hình, không nên coi là cận trên chắc chắn của chi phí cơ hội vốn công "
-            "vì mô hình chưa phản ánh thuế, nợ công, độ trễ, rủi ro triển khai và hiệu ứng lấn át."
+            f"Trong mô hình, biến ngân sách được đo bằng **nghìn tỷ VND**. Giá đối ngẫu của ràng buộc "
+            f"ngân sách tổng theo nghiệm HiGHS là khoảng **{scipy_budget_shadow:.2f} nghìn tỷ GDP / 1 nghìn tỷ VND**. "
+            f"Vì vậy, nếu ngân sách tăng thêm **1 tỷ VND** (=0,001 nghìn tỷ VND), GDP kỳ vọng tăng xấp xỉ "
+            f"**{scipy_budget_shadow * 0.001:.4f} nghìn tỷ VND**, tức khoảng **{scipy_budget_shadow:.2f} tỷ VND**. "
+            "Đây chỉ là lợi ích biên trong vùng độ nhạy của mô hình, không phải cận trên chắc chắn của chi phí cơ hội "
+            "vốn công vì chưa phản ánh thuế, nợ công, độ trễ, rủi ro triển khai và hiệu ứng lấn át."
         )
 
     with st.expander(
@@ -4050,13 +4050,16 @@ priority = (
     )
 
     with st.expander(
-        "a) Ba ngành nào nên được ưu tiên chuyển đổi số và AI trước?",
+        "a) Ba ngành nào nên ưu tiên chuyển đổi số và AI trước? Có phù hợp Nghị quyết 57-NQ/TW không?",
         expanded=True,
     ):
         st.markdown(
             f"Theo bộ trọng số mặc định, ba ngành có chỉ số Priority cao nhất là "
             f"**{top3_names}**. Đây là các ngành đạt sự kết hợp tương đối tốt giữa "
-            "tăng trưởng, lan tỏa, xuất khẩu, việc làm và mức sẵn sàng AI."
+            "tăng trưởng, lan tỏa, xuất khẩu, việc làm và mức sẵn sàng AI. Về định hướng, kết quả này "
+            "phù hợp với tinh thần ưu tiên khoa học, công nghệ, đổi mới sáng tạo và chuyển đổi số của "
+            "Nghị quyết 57-NQ/TW; tuy nhiên bảng xếp hạng chỉ là công cụ định lượng hỗ trợ, không thay thế "
+            "đánh giá thể chế, nguồn lực triển khai và tham vấn chính sách."
         )
 
     with st.expander(
@@ -5032,7 +5035,7 @@ def page_4():
         )
 
     with st.expander(
-        "b) Trần vùng C3 làm giảm Z* bao nhiêu?",
+        "b) Ràng buộc trần ngân sách mỗi vùng C3 làm giảm Z* bao nhiêu phần trăm? Có chấp nhận được không?",
         expanded=True,
     ):
         st.markdown(
@@ -5060,17 +5063,12 @@ def page_4():
             "nhân lực, hạ tầng và khoản D cần thiết để đáp ứng công bằng trước khi mở rộng AI."
         )
 
-    with st.expander(
-        "d) Vì sao không được tự ý đổi λ=0,70 thành 0,68 mà không giải thích?",
-        expanded=True,
-    ):
-        st.markdown(
-            f"λ=0,70 là tham số của đề nhưng không khả thi với bộ dữ liệu và trần 12.000. "
-            f"Do đó, bài làm tốt phải **báo cáo bất khả thi**, chỉ ra nguyên nhân, rồi mới "
-            f"thực hiện phân tích độ nhạy. Giá trị lớn nhất khả thi hiện tại là khoảng "
-            f"**{lambda_max:.4f}**; λ={lambda_used:.3f} chỉ là kịch bản hiệu chỉnh để "
-            "tiếp tục so sánh solver và phân tích chính sách."
-        )
+    st.info(
+        f"Ghi chú kỹ thuật về λ: λ=0,70 là tham số của đề nhưng không khả thi với bộ dữ liệu "
+        f"và trần 12.000. Vì vậy bài làm cần báo cáo bất khả thi, chỉ ra nguyên nhân, rồi mới "
+        f"phân tích độ nhạy. Giá trị lớn nhất khả thi hiện tại khoảng **{lambda_max:.4f}**; "
+        f"λ={lambda_used:.3f} chỉ là kịch bản hiệu chỉnh để tiếp tục so sánh solver và phân tích chính sách."
+    )
 
 
     ai_analysis_panel(
@@ -5387,9 +5385,9 @@ def page_5():
     )
 
     st.markdown("## 5.5. Câu hỏi thảo luận chính sách")
-    with st.expander("a) Vì sao P15 có B/C cao nhưng có thể vẫn bị loại?", expanded=True):
+    with st.expander("a) Vì sao mô hình có thể bỏ qua P15 dù B/C cao? Đây có phải kết quả mong muốn không?", expanded=True):
         chosen = "được chọn" if (base["success"] and "P15" in set(base_selected["Mã"])) else "không được chọn"
-        st.markdown(f"P15 **{chosen}** trong nghiệm chuẩn. Một dự án B/C cao vẫn có thể bị loại vì MIP xét đồng thời ngân sách năm 1-2, số lượng dự án, dự án bắt buộc P14 và các quan hệ tiên quyết; không phải chỉ xếp hạng B/C.")
+        st.markdown(f"P15 **{chosen}** trong nghiệm chuẩn. Một dự án B/C cao vẫn có thể bị loại vì MIP xét đồng thời ngân sách năm 1-2, số lượng dự án, dự án bắt buộc P14, số lượng dự án tối thiểu/tối đa và các quan hệ tiên quyết; không phải chỉ xếp hạng B/C. Về chính sách, nếu P15 là hạ tầng dữ liệu nền tảng cho nhiều dự án khác thì việc bị loại **chưa chắc là kết quả mong muốn**; khi đó nên bổ sung ràng buộc bắt buộc dữ liệu mở hoặc thêm lợi ích cộng hưởng của P15 vào hàm mục tiêu.")
     with st.expander("b) Bắt buộc P14 có hợp lý không?", expanded=True):
         st.markdown("Ràng buộc P14 phản ánh an ninh mạng là điều kiện nền cho mọi hạ tầng số. Nó có thể làm giảm Z* nếu P14 không nằm trong danh mục tối ưu tự do, nhưng hợp lý về quản trị rủi ro hệ thống.")
     with st.expander("c) Mô hình hóa cộng hưởng P8 và P13 như thế nào?", expanded=True):
@@ -6429,7 +6427,7 @@ result = pd.DataFrame({
     )["Vùng"].tolist()
 
     with st.expander(
-        "a) Vùng dẫn đầu có nên được đặt trung tâm AI quốc gia đầu tiên không?",
+        "a) Vùng nào dẫn đầu theo TOPSIS chuyên gia? Có nên triển khai trung tâm AI quốc gia đầu tiên không?",
         expanded=True,
     ):
         st.markdown(
@@ -6441,7 +6439,7 @@ result = pd.DataFrame({
         )
 
     with st.expander(
-        "b) Vì sao Entropy có thể cho thứ hạng khác chuyên gia?",
+        "b) Khi dùng Entropy, vùng nào thay đổi hạng lớn nhất? Vì sao?",
         expanded=True,
     ):
         st.markdown(
@@ -6461,7 +6459,7 @@ result = pd.DataFrame({
         )
 
     with st.expander(
-        "d) Nếu xây dựng ba trung tâm AI, nên ưu tiên vùng nào?",
+        "d) Nếu xây dựng 3 trung tâm AI lớn, nên chọn vùng nào? Có cần điều chỉnh tiêu chí địa - chính trị không?",
         expanded=True,
     ):
         st.markdown(
@@ -6470,20 +6468,15 @@ result = pd.DataFrame({
             "cần kết hợp thẩm định hạ tầng năng lượng, an ninh, vốn nhân lực và tác động lan tỏa."
         )
 
-    with st.expander(
-        "e) Kết luận có ổn định giữa các phương pháp không?",
-        expanded=True,
-    ):
-        max_rank_range = int(
-            export_result["Biên độ hạng"].max()
-        )
-
-        st.markdown(
-            f"Biên độ thay đổi thứ hạng lớn nhất giữa chuyên gia, Entropy và AHP là "
-            f"**{max_rank_range} bậc**. Nếu biên độ nhỏ, kết luận tương đối vững; "
-            "nếu biên độ lớn, báo cáo phải trình bày kết quả như một khoảng ưu tiên "
-            "thay vì khẳng định một thứ hạng duy nhất."
-        )
+    max_rank_range = int(
+        export_result["Biên độ hạng"].max()
+    )
+    st.info(
+        f"Ghi chú kiểm định độ vững: biên độ thay đổi thứ hạng lớn nhất giữa chuyên gia, "
+        f"Entropy và AHP là **{max_rank_range} bậc**. Nếu biên độ nhỏ, kết luận tương đối vững; "
+        "nếu biên độ lớn, báo cáo nên trình bày kết quả như một khoảng ưu tiên thay vì khẳng định "
+        "một thứ hạng duy nhất."
+    )
 
 
     ai_analysis_panel(
@@ -7205,37 +7198,69 @@ def page_7():
         key="download_bai7_nsga2",
     )
 
-    st.markdown("## 7.5. Thảo luận chính sách")
+    st.markdown("## 7.5. Câu hỏi thảo luận chính sách")
+
+    ranked_75, best_position_75 = _b7_topsis_compromise(
+        pareto_df,
+        np.array([0.40, 0.25, 0.20, 0.15], dtype=float),
+    )
+    compromise_75 = ranked_75.iloc[best_position_75]
+    max_growth_75 = pareto_df.loc[pareto_df["Growth"].idxmax()]
+    min_inequality_75 = pareto_df.loc[pareto_df["Inequality"].idxmin()]
+
+    if len(pareto_df) > 1:
+        growth_inclusion_corr = float(
+            np.corrcoef(pareto_df["Growth"], pareto_df["Inequality"])[0, 1]
+        )
+    else:
+        growth_inclusion_corr = 0.0
+
+    growth_loss_compromise = float(max_growth_75["Growth"] - compromise_75["Growth"])
+    inequality_improvement = float(max_growth_75["Inequality"] - compromise_75["Inequality"])
+    emission_improvement = float(max_growth_75["Emission"] - compromise_75["Emission"])
 
     with st.expander(
-        "a) Vì sao không chọn trực tiếp nghiệm tăng trưởng cao nhất?",
+        "a) Đánh đổi giữa tăng trưởng và bao trùm trên đường biên Pareto có rõ không?",
         expanded=True,
     ):
         st.markdown(
-            "Nghiệm tăng trưởng cao nhất có thể phải đánh đổi bằng bất bình đẳng, "
-            "phát thải hoặc rủi ro dữ liệu lớn. Tập Pareto buộc nhà hoạch định "
-            "trình bày công khai các đánh đổi thay vì che giấu chúng trong một điểm tổng hợp."
+            f"Đánh đổi **tăng trưởng - bao trùm** được thể hiện qua việc nghiệm tăng trưởng cực đại "
+            f"đạt Growth khoảng **{max_growth_75['Growth']:,.1f}**, trong khi nghiệm thỏa hiệp TOPSIS "
+            f"đạt Growth khoảng **{compromise_75['Growth']:,.1f}**. Khi chuyển từ nghiệm tăng trưởng cực đại "
+            f"sang nghiệm thỏa hiệp, mô hình hy sinh khoảng **{growth_loss_compromise:,.1f}** đơn vị Growth "
+            f"để cải thiện chỉ số bất bình đẳng khoảng **{inequality_improvement:+.4f}** và phát thải khoảng "
+            f"**{emission_improvement:+,.1f}**. Hệ số tương quan giữa Growth và Inequality trong tập Pareto là "
+            f"**{growth_inclusion_corr:.3f}**. Nếu tương quan dương hoặc chênh lệch mục tiêu lớn, điều đó cho thấy "
+            "cơ cấu kinh tế có xu hướng tập trung hiệu quả tăng trưởng vào vùng/ngành hấp thụ tốt hơn; muốn bao trùm "
+            "hơn thì phải chấp nhận một phần chi phí cơ hội về GDP gain."
         )
 
     with st.expander(
-        "b) TOPSIS có thay thế quyết định chính trị không?",
+        "b) Trọng số (0,40; 0,25; 0,20; 0,15) có phù hợp ưu tiên Việt Nam không?",
         expanded=True,
     ):
         st.markdown(
-            "Không. TOPSIS chỉ chuyển hệ trọng số chính sách thành một nghiệm thỏa hiệp. "
-            "Kết quả phải được kiểm tra độ nhạy và tham vấn các bên chịu tác động."
+            "Bộ trọng số mặc định **0,40 cho tăng trưởng; 0,25 cho bao trùm; 0,20 cho môi trường; "
+            "0,15 cho an ninh dữ liệu** phản ánh cách tiếp cận cân bằng nhưng vẫn đặt tăng trưởng lên trước. "
+            "Cách này phù hợp khi mục tiêu chính là thúc đẩy phát triển kinh tế số nhưng không bỏ qua công bằng, "
+            "chuyển đổi xanh và chủ quyền dữ liệu. Nếu muốn nhấn mạnh cam kết khí hậu/COP26, có thể tăng trọng số "
+            "môi trường từ 0,20 lên 0,25-0,30 và giảm nhẹ tăng trưởng. Nếu muốn bám sát định hướng phát triển AI "
+            "an toàn theo Quyết định 127/QĐ-TTg, có thể tăng trọng số an ninh dữ liệu từ 0,15 lên 0,20, đồng thời "
+            "giữ bao trùm ở mức đủ cao để tránh khoảng cách số vùng miền."
         )
 
     with st.expander(
-        "c) Vì sao dùng λ=0,68?",
+        "c) Vai trò của NSGA-II khác LP đơn mục tiêu như thế nào? Có thay thế quyết định chính trị không?",
         expanded=True,
     ):
         st.markdown(
-            "λ=0,70 không khả thi với Digital Index và trần vùng hiện tại. "
-            "Bài 7 dùng λ=0,68 sau khi Bài 4 đã chứng minh ngưỡng khả thi, "
-            "không phải tự ý thay đổi tham số mà không giải thích."
+            "LP đơn mục tiêu cho một nghiệm tối ưu duy nhất theo một hàm mục tiêu đã cố định, còn NSGA-II tạo ra "
+            "một **tập nghiệm Pareto** để nhìn thấy nhiều phương án không bị trội khi các mục tiêu xung đột. "
+            "Vì vậy, vai trò của NSGA-II là mở rộng không gian lựa chọn và minh bạch hóa đánh đổi giữa tăng trưởng, "
+            "bao trùm, môi trường và an ninh dữ liệu. NSGA-II **không thay thế quyết định chính trị**: lựa chọn cuối cùng "
+            "vẫn cần hội đồng chính sách, giải trình trọng số, tham vấn các bên chịu tác động và kiểm tra tính khả thi "
+            "về ngân sách, thể chế, nhân lực và năng lượng."
         )
-
 
     ai_analysis_panel(
         lesson_name='Bài 7 - Pareto đa mục tiêu',
@@ -8161,15 +8186,15 @@ def page_8():
 
     tab841, tab842, tab843, tab844 = st.tabs(
         [
-            "8.4.1 - Tối ưu SLSQP",
-            "8.4.2 - Quỹ đạo động",
+            "8.3.1 - Tối ưu SLSQP",
+            "8.3.2 - Quỹ đạo động",
             "8.3.3 - Cú sốc 2028",
-            "8.4.4 - Front-load & độ nhạy",
+            "8.3.4 - Front-load & độ nhạy",
         ]
     )
 
     # -----------------------------------------------------
-    # 8.4.1
+    # 8.3.1
     # -----------------------------------------------------
     with tab841:
         st.markdown(
@@ -8292,7 +8317,7 @@ def page_8():
             )
 
     # -----------------------------------------------------
-    # 8.4.2
+    # 8.3.2
     # -----------------------------------------------------
     with tab842:
         st.markdown(
@@ -8377,7 +8402,7 @@ def page_8():
         )
 
     # -----------------------------------------------------
-    # 8.4.3
+    # 8.3.3
     # -----------------------------------------------------
     with tab843:
         st.markdown(
@@ -8510,7 +8535,7 @@ def page_8():
         )
 
     # -----------------------------------------------------
-    # 8.4.4
+    # 8.3.4
     # -----------------------------------------------------
     with tab844:
         st.markdown(
@@ -8712,95 +8737,201 @@ def page_8():
         "## 8.4. Câu hỏi thảo luận chính sách"
     )
 
-    first_three_average = (
-        optimal_shares[:3].mean(axis=0)
-    )
-    last_three_average = (
-        optimal_shares[-3:].mean(axis=0)
-    )
-
     component_names = [
-        "vốn K",
-        "số hóa D",
-        "AI",
-        "nhân lực H",
+        "K - vốn vật chất",
+        "D - số hóa",
+        "AI - trí tuệ nhân tạo",
+        "H - nhân lực số",
+    ]
+    component_cols = [
+        "Share_K",
+        "Share_D",
+        "Share_AI",
+        "Share_H",
     ]
 
-    first_priority = component_names[
-        int(
-            np.argmax(
-                first_three_average
-            )
-        )
-    ]
+    first_three_average = optimal_shares[:3].mean(axis=0)
+    last_three_average = optimal_shares[-3:].mean(axis=0)
+    all_period_average = optimal_shares.mean(axis=0)
 
-    last_priority = component_names[
-        int(
-            np.argmax(
-                last_three_average
-            )
-        )
-    ]
+    def _b8_timing_label(first_value, last_value, threshold=0.01):
+        if first_value > last_value + threshold:
+            return "front-loaded"
+        if last_value > first_value + threshold:
+            return "back-loaded"
+        return "tương đối ổn định"
+
+    timing_table = pd.DataFrame(
+        {
+            "Hạng mục": component_names,
+            "TB 2026-2028": first_three_average,
+            "TB toàn kỳ": all_period_average,
+            "TB 2033-2035": last_three_average,
+            "Chênh lệch đầu-cuối": first_three_average - last_three_average,
+            "Nhận xét quỹ đạo": [
+                _b8_timing_label(first_three_average[i], last_three_average[i])
+                for i in range(4)
+            ],
+        }
+    )
+
+    state_growth_table = pd.DataFrame(
+        {
+            "Biến trạng thái": ["K", "D", "AI", "H"],
+            "Giá trị 2026": [
+                optimal_simulation.iloc[0]["K"],
+                optimal_simulation.iloc[0]["D"],
+                optimal_simulation.iloc[0]["AI"],
+                optimal_simulation.iloc[0]["H"],
+            ],
+            "Giá trị 2035": [
+                optimal_simulation.iloc[-1]["K"],
+                optimal_simulation.iloc[-1]["D"],
+                optimal_simulation.iloc[-1]["AI"],
+                optimal_simulation.iloc[-1]["H"],
+            ],
+        }
+    )
+    state_growth_table["Tăng 2026-2035 (%)"] = (
+        (state_growth_table["Giá trị 2035"] / state_growth_table["Giá trị 2026"] - 1)
+        * 100
+    )
+
+    ai_h_ratio = optimal_shares[:, 2] / np.maximum(optimal_shares[:, 3], 1e-12)
+    ai_h_ratio_mean = float(np.mean(ai_h_ratio))
+    ai_h_ratio_std = float(np.std(ai_h_ratio))
+    ai_h_ratio_cv = float(ai_h_ratio_std / max(ai_h_ratio_mean, 1e-12))
+    ai_h_ratio_status = "khá ổn định" if ai_h_ratio_cv < 0.15 else "chưa ổn định"
+
+    with st.spinner("Đang so sánh riêng hai trường hợp rho=0,97 và rho=0,90..."):
+        rho97_shares, rho97_simulation, _ = _b8_optimize_shares(rho=0.97, shock_2028=0.0)
+        rho90_shares, rho90_simulation, _ = _b8_optimize_shares(rho=0.90, shock_2028=0.0)
+
+    rho_comparison = pd.DataFrame(
+        {
+            "Chỉ tiêu": [
+                "Welfare lũy kế",
+                "GDP 2035",
+                "TB Share_K",
+                "TB Share_D",
+                "TB Share_AI",
+                "TB Share_H",
+                "Tỷ lệ AI/H bình quân",
+            ],
+            "rho=0,97": [
+                float(rho97_simulation.iloc[-1]["Welfare_lũy_kế"]),
+                float(rho97_simulation.iloc[-1]["GDP"]),
+                float(rho97_shares[:, 0].mean()),
+                float(rho97_shares[:, 1].mean()),
+                float(rho97_shares[:, 2].mean()),
+                float(rho97_shares[:, 3].mean()),
+                float(np.mean(rho97_shares[:, 2] / np.maximum(rho97_shares[:, 3], 1e-12))),
+            ],
+            "rho=0,90": [
+                float(rho90_simulation.iloc[-1]["Welfare_lũy_kế"]),
+                float(rho90_simulation.iloc[-1]["GDP"]),
+                float(rho90_shares[:, 0].mean()),
+                float(rho90_shares[:, 1].mean()),
+                float(rho90_shares[:, 2].mean()),
+                float(rho90_shares[:, 3].mean()),
+                float(np.mean(rho90_shares[:, 2] / np.maximum(rho90_shares[:, 3], 1e-12))),
+            ],
+        }
+    )
+    rho_comparison["Thay đổi khi rho=0,90"] = rho_comparison["rho=0,90"] - rho_comparison["rho=0,97"]
 
     with st.expander(
-        "a) Nên ưu tiên hạng mục nào trong ba năm đầu?",
+        "a) Quỹ đạo tối ưu của K, D, AI, H front-loaded hay back-loaded? Vì sao?",
         expanded=True,
     ):
+        st.dataframe(
+            timing_table.style.format(
+                {
+                    "TB 2026-2028": "{:.4f}",
+                    "TB toàn kỳ": "{:.4f}",
+                    "TB 2033-2035": "{:.4f}",
+                    "Chênh lệch đầu-cuối": "{:+.4f}",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.dataframe(
+            state_growth_table.style.format(
+                {
+                    "Giá trị 2026": "{:,.3f}",
+                    "Giá trị 2035": "{:,.3f}",
+                    "Tăng 2026-2035 (%)": "{:+.2f}",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
         st.markdown(
-            f"Theo nghiệm tối ưu, hạng mục có tỷ trọng bình quân lớn nhất "
-            f"trong ba năm đầu là **{first_priority}**. Kết quả phản ánh lợi ích "
-            "tích lũy và độ trễ của đầu tư, nhưng vẫn phụ thuộc vào bộ tham số mô phỏng."
+            "Bảng trên cho biết hạng mục nào được dồn tỷ trọng đầu tư mạnh ở đầu kỳ (**front-loaded**) "
+            "và hạng mục nào được tăng tỷ trọng về cuối kỳ (**back-loaded**). Mô hình đề xuất như vậy vì "
+            "các biến K, D, AI và H có cơ chế tích lũy khác nhau: đầu tư sớm vào biến có độ trễ và tác động nền tảng "
+            "sẽ tạo năng lực sản xuất cho nhiều năm sau; còn đầu tư muộn phù hợp hơn với biến có lợi ích ngắn hạn "
+            "hoặc cần chờ nền tảng hấp thụ đủ mạnh. Do đó, không nên kết luận chung rằng mọi biến đều front-loaded; "
+            "phải đọc riêng từng cột trong bảng quỹ đạo tối ưu."
         )
 
     with st.expander(
-        "b) Cơ cấu đầu tư thay đổi thế nào về cuối kỳ?",
+        "b) Tỷ lệ đầu tư AI/đầu tư H có ổn định không? Nhân lực nên đi trước hay đồng thời với AI?",
         expanded=True,
     ):
+        ratio_table = pd.DataFrame(
+            {
+                "Năm": np.arange(2026, 2036),
+                "Share_AI": optimal_shares[:, 2],
+                "Share_H": optimal_shares[:, 3],
+                "AI/H": ai_h_ratio,
+            }
+        )
+        st.dataframe(
+            ratio_table.style.format(
+                {
+                    "Share_AI": "{:.4f}",
+                    "Share_H": "{:.4f}",
+                    "AI/H": "{:.4f}",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
         st.markdown(
-            f"Trong ba năm cuối, hạng mục có tỷ trọng bình quân lớn nhất là "
-            f"**{last_priority}**. Sự thay đổi giữa đầu kỳ và cuối kỳ cho thấy "
-            "mô hình phân biệt đầu tư nền tảng với đầu tư khai thác thành quả."
+            f"Tỷ lệ AI/H bình quân là **{ai_h_ratio_mean:.3f}**, độ lệch chuẩn **{ai_h_ratio_std:.3f}**, "
+            f"hệ số biến thiên **{ai_h_ratio_cv:.3f}**, nên tỷ lệ này được xem là **{ai_h_ratio_status}**. "
+            "Nếu Share_H cao ở đầu kỳ hoặc AI/H tăng dần về sau, mô hình ngụ ý đào tạo nhân lực nên **đi trước** "
+            "để tạo năng lực hấp thụ AI. Nếu AI/H dao động ít và Share_AI, Share_H cùng duy trì ở mức đáng kể, "
+            "mô hình ngụ ý đào tạo nhân lực nên **đồng thời** với đầu tư AI. Trong cả hai trường hợp, không nên đầu tư "
+            "AI tách rời khỏi H vì thiếu nhân lực sẽ làm giảm hiệu quả triển khai và tăng rủi ro thay thế lao động."
         )
 
     with st.expander(
-        "c) Cú sốc 2028 có làm thay đổi chính sách tối ưu không?",
+        "c) Nếu rho giảm từ 0,97 xuống 0,90 thì kết quả thay đổi thế nào? Có dẫn tới dưới đầu tư R&D không?",
         expanded=True,
     ):
-        average_policy_change = float(
-            np.mean(
-                np.abs(
-                    shock_shares
-                    - optimal_shares
-                )
-            )
+        st.dataframe(
+            rho_comparison.style.format(
+                {
+                    "rho=0,97": "{:,.4f}",
+                    "rho=0,90": "{:,.4f}",
+                    "Thay đổi khi rho=0,90": "{:+,.4f}",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
         )
-
         st.markdown(
-            f"Cú sốc làm thay đổi tỷ trọng đầu tư bình quân tuyệt đối khoảng "
-            f"**{average_policy_change:.4f}**. Nếu thay đổi nhỏ, chính sách tương đối "
-            "ổn định; nếu thay đổi lớn, cần chuẩn bị cơ chế tái phân bổ ngân sách linh hoạt."
+            "Khi **rho=0,97**, phúc lợi tương lai được coi trọng hơn, nên mô hình có xu hướng chấp nhận đầu tư "
+            "vào các năng lực tích lũy dài hạn như D, AI và H. Khi **rho=0,90**, tương lai bị chiết khấu mạnh hơn, "
+            "mô hình thiên về lợi ích ngắn hạn hơn và có thể giảm sức hấp dẫn tương đối của các khoản đầu tư có độ trễ. "
+            "Đây là một lý do kinh tế khiến chính phủ hoặc tổ chức chịu áp lực nhiệm kỳ thường **dưới đầu tư vào R&D, "
+            "nhân lực và công nghệ nền tảng**: chi phí xuất hiện ngay, còn lợi ích đến muộn và khó quy trách nhiệm. "
+            "Trong Bài 8 không có biến R&D riêng, nên kết luận này được diễn giải thông qua các khoản đầu tư dài hạn "
+            "gần R&D như AI, số hóa và nhân lực số."
         )
-
-    with st.expander(
-        "d) Front-load có luôn tốt hơn trải đều không?",
-        expanded=True,
-    ):
-        st.markdown(
-            "Không. Front-load có thể tạo năng lực sớm và nâng sản lượng tương lai, "
-            "nhưng làm giảm tiêu dùng hiện tại. Kết luận phụ thuộc vào hệ số chiết khấu, "
-            "hiệu quả chuyển đổi đầu tư và tốc độ khấu hao của từng loại tài sản."
-        )
-
-    with st.expander(
-        "e) Giới hạn lớn nhất của mô hình là gì?",
-        expanded=True,
-    ):
-        st.markdown(
-            "Mô hình sử dụng tham số giả định, chưa có chi phí điều chỉnh, độ trễ dự án, "
-            "trần hấp thụ từng năm, nợ công, phân phối thu nhập và bất định tham số. "
-            "Do đó kết quả là công cụ mô phỏng và hỗ trợ quyết định, không phải dự báo chính thức."
-        )
-
 
     ai_analysis_panel(
         lesson_name='Bài 8 - Tối ưu động 2026-2035',
@@ -9148,6 +9279,87 @@ def _b10_solution_tables(result):
     return x_df, y_df
 
 
+def _b10_solve_robust_regret():
+    """Cực tiểu hóa regret xấu nhất theo đúng yêu cầu 10.5.4."""
+    items, scenarios, _, _, beta, beta_s = _b10_data()
+    n_i, n_s = len(items), len(scenarios)
+    scenario_opt = np.array(
+        [_b10_solve_scenario(i)["objective"] for i in range(n_s)],
+        dtype=float,
+    )
+
+    # Biến gồm x_j, y_sj và R=max regret.
+    n_var = n_i + n_s * n_i + 1
+    r_index = n_var - 1
+    c = np.zeros(n_var, dtype=float)
+    c[r_index] = 1.0
+
+    A_ub, b_ub = [], []
+
+    row = np.zeros(n_var, dtype=float)
+    row[:n_i] = 1.0
+    A_ub.append(row)
+    b_ub.append(65000.0)
+
+    for s in range(n_s):
+        row = np.zeros(n_var, dtype=float)
+        row[n_i + s * n_i : n_i + (s + 1) * n_i] = 1.0
+        A_ub.append(row)
+        b_ub.append(15000.0)
+
+        row = np.zeros(n_var, dtype=float)
+        row[n_i + s * n_i + 2] = 1.0
+        row[3] = -0.5
+        A_ub.append(row)
+        b_ub.append(0.0)
+
+        # regret_s = Z_s^WS - value_s(x,y_s) <= R
+        # -beta*x - beta_s*y_s - R <= -Z_s^WS
+        row = np.zeros(n_var, dtype=float)
+        row[:n_i] = -beta
+        row[n_i + s * n_i : n_i + (s + 1) * n_i] = -beta_s[s]
+        row[r_index] = -1.0
+        A_ub.append(row)
+        b_ub.append(-scenario_opt[s])
+
+    bounds = [(0, None)] * n_var
+    res = linprog(
+        c,
+        A_ub=np.asarray(A_ub, dtype=float),
+        b_ub=np.asarray(b_ub, dtype=float),
+        bounds=bounds,
+        method="highs",
+    )
+    if not res.success:
+        return {
+            "success": False,
+            "status": res.message,
+            "x": None,
+            "y": None,
+            "objective": np.nan,
+            "scenario_opt": scenario_opt,
+            "scenario_regret": None,
+        }
+
+    x = res.x[:n_i]
+    y = res.x[n_i : n_i + n_s * n_i].reshape(n_s, n_i)
+    values = np.array(
+        [float(beta @ x + beta_s[s] @ y[s]) for s in range(n_s)],
+        dtype=float,
+    )
+    regrets = scenario_opt - values
+    return {
+        "success": True,
+        "status": res.message,
+        "x": x,
+        "y": y,
+        "objective": float(res.x[r_index]),
+        "scenario_opt": scenario_opt,
+        "scenario_value": values,
+        "scenario_regret": regrets,
+    }
+
+
 def _b10_full_analysis():
     items, scenarios, probabilities, _, _, beta_s = _b10_data()
     sp = _b10_solve_lp()
@@ -9170,13 +9382,14 @@ def _b10_full_analysis():
         "VSS": float(sp["objective"] - eev["objective"]),
         "EVPI": float(ws - sp["objective"]),
         "robust": _b10_solve_lp(robust=True),
+        "robust_regret": _b10_solve_robust_regret(),
     }
 
 
 def page_10():
     hero(
         "Bài 10 — Quy hoạch ngẫu nhiên hai giai đoạn dưới bất định",
-        "Mô hình first-stage / second-stage đúng 4 kịch bản, xác suất, VSS, EVPI và robust worst-case.",
+        "Mô hình first-stage / second-stage đúng 4 kịch bản, xác suất, VSS, EVPI và robust regret.",
         ["10.1-10.6", "Two-stage SP", "VSS", "EVPI", "Robust"],
     )
     show_assignment_structure(10)
@@ -9205,7 +9418,7 @@ def page_10():
 
     analysis = _b10_full_analysis()
     st.markdown("## 10.5. Yêu cầu lập trình")
-    tab1, tab2, tab3, tab4 = st.tabs(["10.5.1 - SP", "10.5.2 - EV & từng kịch bản", "10.5.3 - VSS/EVPI", "10.5.4 - Robust"])
+    tab1, tab2, tab3, tab4 = st.tabs(["10.5.1 - SP", "10.5.2 - EV & từng kịch bản", "10.5.3 - VSS/EVPI", "10.5.4 - Robust regret"])
     with tab1:
         st.markdown("### Câu 10.5.1. Mô hình first-stage/second-stage và quyết định tối ưu")
         sp = analysis["sp"]
@@ -9242,28 +9455,40 @@ def page_10():
         st.dataframe(pd.DataFrame({"Chỉ tiêu": ["WS", "SP/RP", "EEV", "VSS", "EVPI"], "Giá trị": [analysis["WS"], analysis["sp"]["objective"], analysis["eev"]["objective"], analysis["VSS"], analysis["EVPI"]]}), use_container_width=True, hide_index=True)
 
     with tab4:
-        st.markdown("### Câu 10.5.4. Robust optimization theo worst-case")
-        robust = analysis["robust"]
-        x_df, y_df = _b10_solution_tables(robust)
+        st.markdown("### Câu 10.5.4. Robust optimization cực tiểu hóa regret xấu nhất")
+        robust_regret = analysis["robust_regret"]
+        robust_maxmin = analysis["robust"]
+        x_df, y_df = _b10_solution_tables(robust_regret)
+        regret_df = pd.DataFrame({
+            "Kịch bản": scenarios,
+            "Z* wait-and-see": robust_regret["scenario_opt"],
+            "Giá trị robust-regret": robust_regret["scenario_value"],
+            "Regret": robust_regret["scenario_regret"],
+        })
         kpi_cards([
-            ("Worst-case value", f"{robust['objective']:,.2f}", "max-min"),
-            ("First-stage", f"{x_df['First-stage x'].sum():,.0f}", "ngân sách"),
-            ("x_H robust", f"{robust['x'][3]:,.0f}", "bảo hiểm nhân lực"),
-            ("x_AI robust", f"{robust['x'][2]:,.0f}", "AI first-stage"),
+            ("Max regret", f"{robust_regret['objective']:,.2f}", "cần cực tiểu"),
+            ("First-stage", f"{x_df['First-stage x'].sum():,.0f}", "≤65.000"),
+            ("x_H robust-regret", f"{robust_regret['x'][3]:,.0f}", "bảo hiểm nhân lực"),
+            ("Worst-case max-min", f"{robust_maxmin['objective']:,.2f}", "đối chiếu"),
         ])
         st.dataframe(x_df, use_container_width=True, hide_index=True)
         st.dataframe(y_df, use_container_width=True, hide_index=True)
-        st.markdown("Robust max-min thường dịch chuyển về hạng mục nhân lực trong kịch bản xấu vì H có hệ số cao hơn khi khủng hoảng.")
+        st.dataframe(regret_df, use_container_width=True, hide_index=True)
+        st.markdown(
+            "Robust regret không tối đa hóa riêng kịch bản xấu nhất, mà chọn quyết định làm cho **khoảng tiếc nuối lớn nhất** "
+            "so với lời giải wait-and-see của từng kịch bản là nhỏ nhất. Cách này phù hợp khi nhà hoạch định muốn tránh "
+            "ra quyết định quá tệ trong bất kỳ trạng thái tương lai nào."
+        )
 
     x_export, y_export = _b10_solution_tables(analysis["sp"])
     st.download_button("Tải nghiệm SP Bài 10", data=x_export.to_csv(index=False).encode("utf-8-sig"), file_name="bai10_first_stage_sp.csv", mime="text/csv", key="download_bai10_exact")
     st.markdown("## 10.6. Câu hỏi thảo luận chính sách")
-    with st.expander("a) SP đầu tư H nhiều hơn hay ít hơn lời giải xác định?", expanded=True):
+    with st.expander("a) So với lời giải xác định, SP đầu tư H nhiều hơn hay ít hơn? Vì sao?", expanded=True):
         st.markdown("So sánh cột SP x và EV/từng kịch bản cho thấy H đóng vai trò bảo hiểm: H có hệ số ổn định và tăng trong khủng hoảng, đồng thời mở năng lực triển khai AI giai đoạn hai qua ràng buộc y_AI≤0,5x_H.")
-    with st.expander("b) VSS dương nói lên điều gì?", expanded=True):
+    with st.expander("b) VSS dương nói lên điều gì về tư duy xác suất trong hoạch định chính sách Việt Nam?", expanded=True):
         st.markdown(f"Trong kết quả hiện tại, VSS = **{analysis['VSS']:,.2f}**. Nếu dương, tư duy xác suất tạo giá trị so với dùng một kịch bản trung bình duy nhất.")
-    with st.expander("c) Nhân lực số có phải hàng hóa bảo hiểm?", expanded=True):
-        st.markdown("Có. Trong cú sốc như COVID-19 hoặc thiên tai, lao động qua đào tạo giúp chuyển đổi việc làm và duy trì khả năng hấp thụ công nghệ; vì vậy H không chỉ là đầu tư tăng trưởng mà còn là đầu tư chống chịu.")
+    with st.expander("c) COVID-19 và bão Yagi cho thấy Việt Nam có dưới đầu tư vào nhân lực số như hàng hóa bảo hiểm không?", expanded=True):
+        st.markdown("Có thể có. Các cú sốc như COVID-19 giai đoạn 2020-2022 và bão Yagi năm 2024 cho thấy năng lực số và nhân lực số giúp duy trì dịch vụ công, thương mại, giáo dục, logistics và khả năng chuyển đổi việc làm. Nếu chỉ đánh giá H theo lợi ích tăng trưởng ngắn hạn, chính sách dễ dưới đầu tư vào nhân lực số; trong mô hình SP, H còn là **hàng hóa bảo hiểm** vì làm tăng khả năng thích ứng và mở năng lực triển khai AI ở giai đoạn hai qua ràng buộc y_AI≤0,5x_H.")
 
 
     ai_analysis_panel(
@@ -9448,13 +9673,13 @@ def page_11():
     st.download_button("Tải Q-policy cho 81 trạng thái", data=pd.DataFrame([{"state": str([i,j,k,l]), "action": int(np.argmax(Q[i,j,k,l]))} for i in range(3) for j in range(3) for k in range(3) for l in range(3)]).to_csv(index=False).encode("utf-8-sig"), file_name="bai11_q_policy_81_states.csv", mime="text/csv", key="download_bai11_exact")
 
     st.markdown("## 11.4. Câu hỏi thảo luận chính sách")
-    with st.expander("a) GDP thấp, D thấp, U cao thì π* chọn gì?", expanded=True):
+    with st.expander("a) GDP thấp, D thấp, U cao thì π*(s) chọn hành động gì? Có khớp quick win không?", expanded=True):
         s = np.array([0,0,0,2]); a = _b11_policy_action(Q, s)
         st.markdown(f"Với trạng thái [low, low, low, high], chính sách học được chọn **{_b11_actions()[a]['Tên']}**. Diễn giải cần xem cùng reward: chính sách thường cân bằng giữa quick win số hóa và giảm thất nghiệp qua H.")
-    with st.expander("b) GDP cao, AI cao, U thấp thì π* chọn gì?", expanded=True):
+    with st.expander("b) GDP cao, AI cao, U thấp thì π*(s) chọn gì? Có phù hợp consolidation không?", expanded=True):
         s = np.array([2,2,2,0]); a = _b11_policy_action(Q, s)
         st.markdown(f"Với trạng thái thuận lợi [high, high, high, low], chính sách chọn **{_b11_actions()[a]['Tên']}**, thường mang ý nghĩa củng cố năng lực và kiểm soát rủi ro thay vì chỉ tăng AI.")
-    with st.expander("c) AI có thay thế quyết định chính trị không?", expanded=True):
+    with st.expander("c) Tích hợp π* vào quy trình hoạch định chính sách thế nào để không thay thế quyết định chính trị - xã hội?", expanded=True):
         st.markdown("Không. π* chỉ là đầu vào định lượng. Quy trình chính sách cần có thẩm định chuyên gia, tham vấn xã hội, kiểm toán dữ liệu, đánh giá tác động phân phối và quyết định cuối cùng của cơ quan có thẩm quyền.")
 
 
