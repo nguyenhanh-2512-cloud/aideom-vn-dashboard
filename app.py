@@ -1378,7 +1378,7 @@ ASSIGNMENT_STRUCTURE = {
         ("4.4.2", "Cài đặt lại bằng CVXPY"),
         ("4.4.3", "Heatmap phân bổ và kiểm tra nghiệm"),
         ("4.4.4", "So sánh với mô hình bỏ công bằng C5"),
-        ("4.5", "Trả lời câu hỏi chính sách a-b-c và ghi chú khả thi lambda"),
+        ("4.5", "Trả lời 3 câu hỏi chính sách a-b-c; ghi chú kỹ thuật về tính khả thi của λ=0,70"),
     ],
     5: [
         ("5.1", "Bối cảnh chương trình 15 dự án"),
@@ -1451,7 +1451,7 @@ ASSIGNMENT_STRUCTURE = {
         ("11.4", "Trả lời 3 câu thảo luận chính sách"),
     ],
     12: [
-        ("12.1", "Kiến trúc M1-M6 của AIDEOM-VN"),
+        ("12.1", "Yêu cầu chức năng: dashboard AIDEOM-VN và kiến trúc M1-M6"),
         ("12.2", "Năm kịch bản S1-S5"),
         ("12.3", "Yêu cầu kỹ thuật: module .py, dashboard >=4 tab, test S1/S3/S5"),
         ("12.4", "Sản phẩm bàn giao"),
@@ -4321,7 +4321,7 @@ def page_4():
     # =====================================================
     # 4.2. Mô hình
     # =====================================================
-    st.markdown("## 4.2. Mô hình toán học")
+    st.markdown("## 4.2. Mô hình toán học đầy đủ")
 
     st.latex(
         r"""
@@ -4341,7 +4341,7 @@ def page_4():
     # =====================================================
     # 4.3. Dữ liệu
     # =====================================================
-    st.markdown("## 4.3. Hệ số tác động và Digital Index ban đầu")
+    st.markdown("## 4.3. Bảng hệ số tác động biên βⱼ,ᵣ và Digital Index ban đầu")
 
     parameter_table = pd.DataFrame(
         beta,
@@ -5061,7 +5061,7 @@ def page_4():
         )
 
     with st.expander(
-        "d) Vì sao không được tự ý đổi λ=0,70 thành 0,68 mà không giải thích?",
+        "Ghi chú kỹ thuật: vì sao không được tự ý đổi λ=0,70 thành 0,68?",
         expanded=True,
     ):
         st.markdown(
@@ -5303,14 +5303,14 @@ def page_5():
     st.markdown("## 5.4. Yêu cầu lập trình")
 
     tab1, tab2, tab3, tab4 = st.tabs([
-        "5.4.1 - MIP chuẩn",
+        "5.4.1 - PuLP/CBC",
         "5.4.2 - B=100.000",
         "5.4.3 - Bắt buộc P1 & P2",
         "5.4.4 - Rủi ro dự án",
     ])
 
     with tab1:
-        st.markdown("### Câu 5.4.1. Nghiệm tối ưu với ngân sách 80.000 tỷ")
+        st.markdown("### Câu 5.4.1. Cài đặt và giải MIP bằng PuLP/CBC với ngân sách 80.000 tỷ")
         if not base["success"]:
             st.error("Bài toán chuẩn không khả thi.")
         else:
@@ -5727,7 +5727,7 @@ def page_6():
     # =====================================================
     # 6.2. Mô hình
     # =====================================================
-    st.markdown("## 6.2. Mô hình TOPSIS")
+    st.markdown("## 6.2. Lý thuyết TOPSIS")
 
     st.markdown("### Bước 1. Chuẩn hóa vector")
     st.latex(
@@ -5768,7 +5768,7 @@ def page_6():
     # =====================================================
     # 6.3. Dữ liệu
     # =====================================================
-    st.markdown("## 6.3. Dữ liệu và tiêu chí")
+    st.markdown("## 6.3. Dữ liệu 6 vùng kinh tế xã hội Việt Nam")
 
     data_display = df[
         ["region_name_vi"] + criteria
@@ -5874,7 +5874,7 @@ def page_6():
             "6.4.1 - TOPSIS chuyên gia",
             "6.4.2 - Entropy",
             "6.4.3 - Độ nhạy AI",
-            "6.4.4 - AHP & ổn định hạng",
+            "6.4.4 - AHP mở rộng",
         ]
     )
 
@@ -6246,7 +6246,7 @@ result = pd.DataFrame({
     # -----------------------------------------------------
     with tab644:
         st.markdown(
-            "### Câu 6.4.4. AHP và độ ổn định thứ hạng"
+            "### Câu 6.4.4. AHP mở rộng và so sánh với TOPSIS"
         )
 
         ahp_weight_table = pd.DataFrame(
@@ -6762,7 +6762,7 @@ def page_7():
         """
     )
 
-    st.markdown("## 7.2. Mô hình đa mục tiêu")
+    st.markdown("## 7.2. Mô hình toán học đa mục tiêu")
     st.latex(
         r"\max f_1(x)=\sum_{r,j}\beta_{rj}x_{rj}"
     )
@@ -7205,7 +7205,7 @@ def page_7():
         key="download_bai7_nsga2",
     )
 
-    st.markdown("## 7.5. Thảo luận chính sách")
+    st.markdown("## 7.5. Câu hỏi thảo luận chính sách")
 
     with st.expander(
         "a) Vì sao không chọn trực tiếp nghiệm tăng trưởng cao nhất?",
@@ -8034,7 +8034,7 @@ def page_8():
     # 8.3. Dữ liệu và tham số
     # =====================================================
     st.markdown(
-        "## 8.2.1. Dữ liệu đầu vào và tham số"
+        "### Dữ liệu đầu vào và tham số mô hình"
     )
 
     initial = _b8_initial_state()
@@ -8161,15 +8161,15 @@ def page_8():
 
     tab841, tab842, tab843, tab844 = st.tabs(
         [
-            "8.4.1 - Tối ưu SLSQP",
-            "8.4.2 - Quỹ đạo động",
+            "8.3.1 - Tối ưu SLSQP",
+            "8.3.2 - Quỹ đạo động",
             "8.3.3 - Cú sốc 2028",
-            "8.4.4 - Front-load & độ nhạy",
+            "8.3.4 - Front-load & độ nhạy",
         ]
     )
 
     # -----------------------------------------------------
-    # 8.4.1
+    # 8.3.1
     # -----------------------------------------------------
     with tab841:
         st.markdown(
@@ -8292,7 +8292,7 @@ def page_8():
             )
 
     # -----------------------------------------------------
-    # 8.4.2
+    # 8.3.2
     # -----------------------------------------------------
     with tab842:
         st.markdown(
@@ -8510,7 +8510,7 @@ def page_8():
         )
 
     # -----------------------------------------------------
-    # 8.4.4
+    # 8.3.4
     # -----------------------------------------------------
     with tab844:
         st.markdown(
@@ -8970,7 +8970,7 @@ def page_9():
     st.markdown("## 9.2. Mô hình toán học")
     st.latex(r"NetJob_i = a_{1i}x^{AI}_i + b_{1i}x^H_i - c_{1i}x^{AI}_i Risk_i")
     st.latex(r"DisplacedJob_i = c_{1i}x^{AI}_i Risk_i \le d_{1i}x^H_i = RetrainingCapacity_i")
-    st.markdown("## 9.3. Tham số 8 ngành")
+    st.markdown("## 9.3. Tham số 8 ngành Việt Nam")
     st.dataframe(params.drop(columns=["risk"]), use_container_width=True, hide_index=True)
     st.caption("Cột a2 trong đề dành cho biến x_D khi mở rộng; phiên bản LP cơ sở của đề dùng hai biến x_AI và x_H nên x_D được đặt bằng 0.")
 
@@ -9191,7 +9191,7 @@ def page_10():
         """
     )
 
-    st.markdown("## 10.2. Cây kịch bản")
+    st.markdown("## 10.2. Cấu trúc kịch bản (Scenario Tree)")
     st.dataframe(scenario_info, use_container_width=True, hide_index=True)
 
     st.markdown("## 10.3. Mô hình toán học")
@@ -9377,7 +9377,7 @@ def page_11():
         """
     )
 
-    st.markdown("## 11.2. Môi trường MDP")
+    st.markdown("## 11.2. Mô hình MDP đơn giản hóa")
     st.dataframe(actions_df, use_container_width=True, hide_index=True)
     st.latex(r"R_t=0.40\Delta GDP-0.25\Delta unemployment-0.20CyberRisk-0.15Emission")
     st.info("Trạng thái gồm 4 thành phần rời rạc {low, medium, high}: GDP growth, Digital index, AI capacity, Unemployment risk. Tổng số trạng thái = 3⁴ = 81.")
@@ -10322,7 +10322,7 @@ def page_12():
         "scenarios"
     ]
 
-    st.markdown("## 12.1. Kiến trúc sáu module")
+    st.markdown("## 12.1. Yêu cầu chức năng")
 
     architecture = pd.DataFrame(
         [
@@ -10501,7 +10501,7 @@ def page_12():
     # =====================================================
     # 12.2. Trọng số tương tác và xếp hạng kịch bản
     # =====================================================
-    st.markdown("## 12.2. Năm kịch bản")
+    st.markdown("## 12.2. Năm kịch bản chính sách")
 
     st.markdown("### Điều chỉnh trọng số ra quyết định")
 
@@ -10711,7 +10711,7 @@ def page_12():
         ]
     )
 
-    st.markdown("## 12.3. Yêu cầu kỹ thuật và dashboard tích hợp")
+    st.markdown("## 12.3. Yêu cầu kỹ thuật")
 
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
         [
@@ -11123,7 +11123,7 @@ def page_12():
         hide_index=True,
     )
 
-    st.markdown("## 12.6. Hướng mở rộng")
+    st.markdown("## 12.6. Đề xuất các hướng mở rộng nghiên cứu sau đồ án")
     st.markdown(
         """
         - Tách M1-M5 thành package Python độc lập trong thư mục `src/`.
