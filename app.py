@@ -9407,14 +9407,110 @@ def page_10():
     st.markdown("## 10.2. Cây kịch bản")
     st.dataframe(scenario_info, use_container_width=True, hide_index=True)
 
-    st.markdown("## 10.3. Mô hình toán học")
+    st.markdown("## 10.3. Mô hình stochastic programming hai giai đoạn")
+    st.markdown(
+        """
+        Phần này trình bày rõ cấu trúc **two-stage stochastic programming** đúng theo đề:
+        Chính phủ phải quyết định ngân sách giai đoạn một trước khi biết kịch bản tương lai,
+        sau đó mới sử dụng ngân sách điều chỉnh ở giai đoạn hai khi từng kịch bản xảy ra.
+        """
+    )
+
+    st.markdown("### 10.3.1. Tập chỉ số và tham số")
+    index_param_table = pd.DataFrame(
+        {
+            "Ký hiệu": ["J", "S", "p_s", "β_j", "β^s_j"],
+            "Diễn giải": [
+                "Tập hạng mục đầu tư J = {I, D, AI, H}",
+                "Tập kịch bản S = {s1, s2, s3, s4}",
+                "Xác suất xảy ra của kịch bản s",
+                "Hệ số lợi ích cơ bản của hạng mục j ở quyết định giai đoạn một",
+                "Hệ số lợi ích của hạng mục j khi kịch bản s xảy ra ở giai đoạn hai",
+            ],
+        }
+    )
+    st.dataframe(index_param_table, use_container_width=True, hide_index=True)
+
+    st.markdown("### 10.3.2. Biến quyết định")
+    st.latex(r"x_j \ge 0,\quad j\in J")
+    st.latex(r"y^s_j \ge 0,\quad s\in S,\ j\in J")
+    decision_table = pd.DataFrame(
+        {
+            "Biến": ["x_j", "y^s_j"],
+            "Loại quyết định": ["First-stage / here-and-now", "Second-stage / recourse"],
+            "Ý nghĩa": [
+                "Ngân sách phân bổ ban đầu cho hạng mục j trước khi biết kịch bản tương lai",
+                "Ngân sách điều chỉnh cho hạng mục j sau khi kịch bản s đã xảy ra",
+            ],
+            "Giới hạn ngân sách": ["Tổng x_j ≤ 65.000", "Tổng y^s_j ≤ 15.000 với từng kịch bản s"],
+        }
+    )
+    st.dataframe(decision_table, use_container_width=True, hide_index=True)
+
+    st.markdown("### 10.3.3. Hàm mục tiêu kỳ vọng")
+    st.latex(
+        r"\max Z="
+        r"\sum_{j\in J}\beta_jx_j + "
+        r"\sum_{s\in S}p_s\sum_{j\in J}\beta^s_jy^s_j"
+    )
+    st.markdown(
+        """
+        Thành phần thứ nhất đo lợi ích của quyết định ngân sách ban đầu.
+        Thành phần thứ hai là **lợi ích kỳ vọng** của các quyết định điều chỉnh,
+        được tính theo xác suất của từng kịch bản. Vì vậy nghiệm SP không chỉ tối ưu
+        cho một trạng thái trung bình, mà cân nhắc toàn bộ cây kịch bản.
+        """
+    )
+
+    st.markdown("### 10.3.4. Ràng buộc mô hình")
+    st.latex(r"\sum_{j\in J}x_j\le65{,}000")
+    st.latex(r"\sum_{j\in J}y^s_j\le15{,}000,\quad \forall s\in S")
+    st.latex(r"y^s_{AI}\le0.5x_H,\quad \forall s\in S")
+    st.latex(r"x_j\ge0,\quad y^s_j\ge0")
+    constraint_table = pd.DataFrame(
+        {
+            "Ràng buộc": [
+                "Ngân sách first-stage",
+                "Ngân sách second-stage theo từng kịch bản",
+                "Điều kiện triển khai AI phụ thuộc nhân lực số",
+                "Không âm",
+            ],
+            "Công thức": [
+                "Σ_j x_j ≤ 65.000",
+                "Σ_j y^s_j ≤ 15.000, ∀s",
+                "y^s_AI ≤ 0,5 x_H, ∀s",
+                "x_j ≥ 0; y^s_j ≥ 0",
+            ],
+            "Ý nghĩa chính sách": [
+                "Kế hoạch ngân sách 5 năm phải được chốt trước bất định",
+                "Khi kịch bản xảy ra chỉ còn một quỹ dự phòng/điều chỉnh hữu hạn",
+                "Không thể mở rộng AI giai đoạn hai nếu thiếu nền tảng nhân lực số ban đầu",
+                "Không cho phép phân bổ ngân sách âm",
+            ],
+        }
+    )
+    st.dataframe(constraint_table, use_container_width=True, hide_index=True)
+
+    st.markdown("### 10.3.5. Ý nghĩa của mô hình hai giai đoạn")
+    st.markdown(
+        """
+        Mô hình SP hai giai đoạn khác mô hình xác định ở chỗ nó tách rõ hai lớp quyết định:
+        **x** là quyết định cứng phải cam kết ngay, còn **y** là quyết định linh hoạt sau khi quan sát
+        kịch bản. Cách mô hình hóa này phù hợp với đầu tư số 2026-2030 vì chính sách phải vừa tạo
+        nền tảng trung hạn, vừa giữ khả năng chống chịu trước cú sốc xuất khẩu, FDI, công nghệ hoặc
+        khủng hoảng kinh tế.
+        """
+    )
+
     beta_table = pd.DataFrame(beta_s, columns=items)
     beta_table.insert(0, "Kịch bản", scenarios)
     beta_table.loc[len(beta_table)] = ["β cơ bản"] + beta.tolist()
     st.markdown("## 10.4. Bảng hệ số β theo kịch bản")
     st.dataframe(beta_table, use_container_width=True, hide_index=True)
-    st.latex(r"\max \sum_j \beta_jx_j + \sum_s p_s\sum_j \beta^s_jy^s_j")
-    st.latex(r"\sum_jx_j\le65{,}000,\quad \sum_jy^s_j\le15{,}000,\quad y^s_{AI}\le0.5x_H")
+    st.caption(
+        "Hệ số H cao hơn trong kịch bản khủng hoảng vì nhân lực số giúp nền kinh tế chuyển đổi việc làm, "
+        "duy trì dịch vụ số và hấp thụ cú sốc tốt hơn."
+    )
 
     analysis = _b10_full_analysis()
     st.markdown("## 10.5. Yêu cầu lập trình")
@@ -9433,6 +9529,39 @@ def page_10():
         st.dataframe(y_df, use_container_width=True, hide_index=True)
         fig = px.bar(x_df, x="Hạng mục", y="First-stage x", template=PLOT_TEMPLATE, title="Quyết định first-stage tối ưu")
         st.plotly_chart(fig, use_container_width=True)
+        with st.expander("Mã Pyomo đúng cấu trúc Set, Param, Var theo đề", expanded=False):
+            st.code("""import pyomo.environ as pyo
+
+m = pyo.ConcreteModel()
+m.J = pyo.Set(initialize=['I', 'D', 'AI', 'H'])
+m.S = pyo.Set(initialize=['s1', 's2', 's3', 's4'])
+
+m.p = pyo.Param(m.S, initialize={'s1': 0.30, 's2': 0.45, 's3': 0.20, 's4': 0.05})
+m.beta = pyo.Param(m.J, initialize={'I': 1.00, 'D': 1.10, 'AI': 1.25, 'H': 0.95})
+m.beta_s = pyo.Param(m.S, m.J, initialize={
+    ('s1','I'): 1.25, ('s1','D'): 1.35, ('s1','AI'): 1.55, ('s1','H'): 1.05,
+    ('s2','I'): 1.00, ('s2','D'): 1.10, ('s2','AI'): 1.25, ('s2','H'): 0.95,
+    ('s3','I'): 0.75, ('s3','D'): 0.85, ('s3','AI'): 0.90, ('s3','H'): 1.00,
+    ('s4','I'): 0.40, ('s4','D'): 0.50, ('s4','AI'): 0.55, ('s4','H'): 1.10,
+})
+
+m.x = pyo.Var(m.J, within=pyo.NonNegativeReals)       # first-stage
+m.y = pyo.Var(m.S, m.J, within=pyo.NonNegativeReals)  # second-stage recourse
+
+m.budget1 = pyo.Constraint(expr=sum(m.x[j] for j in m.J) <= 65000)
+m.budget2 = pyo.Constraint(m.S, rule=lambda m, s: sum(m.y[s, j] for j in m.J) <= 15000)
+m.ai_capacity = pyo.Constraint(m.S, rule=lambda m, s: m.y[s, 'AI'] <= 0.5 * m.x['H'])
+
+def obj_rule(m):
+    first = sum(m.beta[j] * m.x[j] for j in m.J)
+    second = sum(m.p[s] * sum(m.beta_s[s, j] * m.y[s, j] for j in m.J) for s in m.S)
+    return first + second
+
+m.obj = pyo.Objective(rule=obj_rule, sense=pyo.maximize)
+solver = pyo.SolverFactory('cbc')  # hoặc glpk
+solver.solve(m)
+print({j: pyo.value(m.x[j]) for j in m.J})""", language="python")
+            st.caption("Dashboard giải bằng SciPy/HiGHS để chạy ổn định trên Streamlit, nhưng mô hình Pyomo ở trên giữ đúng Set, Param, Var, first-stage và second-stage như yêu cầu đề.")
 
     with tab2:
         st.markdown("### Câu 10.5.2. So sánh deterministic, EV và SP")
@@ -9474,6 +9603,16 @@ def page_10():
         st.dataframe(x_df, use_container_width=True, hide_index=True)
         st.dataframe(y_df, use_container_width=True, hide_index=True)
         st.dataframe(regret_df, use_container_width=True, hide_index=True)
+        robust_sp_compare = pd.DataFrame(
+            {
+                "Hạng mục": items,
+                "SP first-stage x": analysis["sp"]["x"],
+                "Robust-regret first-stage x": robust_regret["x"],
+                "Chênh lệch robust - SP": robust_regret["x"] - analysis["sp"]["x"],
+            }
+        )
+        st.markdown("#### So sánh decision robust-regret với SP")
+        st.dataframe(robust_sp_compare, use_container_width=True, hide_index=True)
         st.markdown(
             "Robust regret không tối đa hóa riêng kịch bản xấu nhất, mà chọn quyết định làm cho **khoảng tiếc nuối lớn nhất** "
             "so với lời giải wait-and-see của từng kịch bản là nhỏ nhất. Cách này phù hợp khi nhà hoạch định muốn tránh "
@@ -9667,8 +9806,22 @@ def page_11():
 
     with tab5:
         st.markdown("### Câu 11.3.5. Mở rộng DQN bằng stable-baselines3")
-        st.markdown("Đây là phần mở rộng. Dashboard giữ Q-learning tabular làm kết quả chính để chạy ổn định trên Streamlit Cloud; DQN có thể huấn luyện offline bằng stable-baselines3.")
-        st.code("""from stable_baselines3 import DQN\nmodel = DQN('MlpPolicy', env, learning_rate=1e-3, buffer_size=50000,\n            learning_starts=1000, batch_size=64, gamma=0.95, verbose=1)\nmodel.learn(total_timesteps=100000)""", language="python")
+        st.markdown("Đây là phần mở rộng. Dashboard giữ Q-learning tabular làm kết quả chính để chạy ổn định trên Streamlit Cloud; DQN có thể huấn luyện offline bằng stable-baselines3 với neural network 2 hidden layers, mỗi layer 64 units.")
+        st.code("""from stable_baselines3 import DQN
+
+policy_kwargs = dict(net_arch=[64, 64])  # 2 hidden layers, mỗi layer 64 units
+model = DQN(
+    'MlpPolicy',
+    env,
+    policy_kwargs=policy_kwargs,
+    learning_rate=1e-3,
+    buffer_size=50000,
+    learning_starts=1000,
+    batch_size=64,
+    gamma=0.95,
+    verbose=1,
+)
+model.learn(total_timesteps=100000)""", language="python")
 
     st.download_button("Tải Q-policy cho 81 trạng thái", data=pd.DataFrame([{"state": str([i,j,k,l]), "action": int(np.argmax(Q[i,j,k,l]))} for i in range(3) for j in range(3) for k in range(3) for l in range(3)]).to_csv(index=False).encode("utf-8-sig"), file_name="bai11_q_policy_81_states.csv", mime="text/csv", key="download_bai11_exact")
 
